@@ -1,0 +1,117 @@
+{
+  "manifest_version": 3,
+  "name": "品聘插件",
+  "description": "品聘插件--强大的人才管理工具",
+  "homepage_url": "http://www.ppinsoft.cn",
+  "version": "1.0.0",
+  "icons": {
+    "128": "icon.png"
+  },
+  "options_page": "options.html",
+  "action": {
+    "default_icon": {
+      "16": "icon.png",
+      "32": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "permissions": [
+    "storage",
+    "cookies",
+    "activeTab",
+    "background",
+    "tabs",
+    "scripting",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "*://*.lagou.com/*",
+    "*://*.zhaopin.com/*",
+    "*://*.zhipin.com/*",
+    "*://*.linkedin.com/*",
+    "*://*.buildhr.com/*",
+    "*://*.linkedin.cn/*",
+    "*://*.maimai.cn/*",
+    "*://*.51jingying.com/*",
+    "*://*.51job.com/*",
+    "*://*.liepin.com/*",
+    "*://rd6.zhaopin.com/api/talent/search/list*",
+    "*://www.lagou.com/jobs/*",
+    "*://fe-api.zhaopin.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "js/lib/lodash/lodash.min.js",
+        "js/lib/async/async.min.js",
+        "js/lib/jquery/jquery.min.js",
+        "js/lib/moment/moment-with-locales.min.js",
+        "js/core/utils.js",
+        "js/core/html2canvas.js",
+        "js/page.js",
+        "js/issue/content.js",
+        "js/lib/angular/angular.min.js",
+
+        "lib/angular-ui-bootstrap/ui-bootstrap-tpls.js",
+        "lib/ui-select/select.min.js",
+        "lib/jstree/jstree.min.js",
+        "js/lib/jstreedirective/jsTree.directive.js",
+        "js/versions/v1/default/directive.js",
+        "js/versions/v1/default/page.js",
+        "js/versions/v1/default/check_repeat.js"
+      ],
+      "css": [
+        "lib/ui-select/select.min.css",
+        "lib/jstree/themes/default/style.min.css",
+        "css/versions/v1/default/toolbox.css"
+      ]
+    },{
+        "matches": [
+          "*://*/*"
+        ],
+        "js": [
+          "js/release/ppPlugin_content.js"
+        ]
+      },
+      {
+        "matches": [
+          "https://www.zhipin.com/web/frame/c-resume/*"
+        ],
+        "js": [
+          "js/release/zhipin.js"
+        ],
+        "run_at": "document_start",
+        "all_frames": true
+      },
+      {
+        "matches": [
+          "https://www.zhipin.com/web/chat/index",
+          "https://www.zhipin.com/web/chat/recommend"
+        ],
+        "js": [
+          "js/versions/v1/zhipin/page.js"
+        ]
+      }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [{
+    "resources": [
+      "css/versions/v1/default/lpt.css",
+      "css/versions/v1/default/lagou.css",
+      "css/versions/v1/default/maimai.css",
+      "css/versions/v1/default/zhipin.css",
+      "css/versions/v1/default/yimaitongdao.css",
+      "css/versions/v1/default/job5156.css",
+      "css/versions/v1/default/duolie.css",
+      "js/versions/v1/zhipin/wasm_canvas-1.0.2-5018.js",
+      "js/release/zhipin2.js"
+    ],
+    "matches": ["<all_urls>"]
+  }]
+}

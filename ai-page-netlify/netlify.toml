@@ -1,0 +1,13 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[dev]
+  command = "npm run start:mock"
+  targetPort = 8888
+  port = 8888
+  publish = "public"
+  functions = "netlify/functions"
+
+# Functions are served at /.netlify/functions/<name>
+# e.g. /.netlify/functions/resume-ai-parse and /.netlify/functions/health

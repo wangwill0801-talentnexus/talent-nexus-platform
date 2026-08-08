@@ -1,0 +1,1 @@
+console.log(666),utils.message.register({type:"__PP_PLUGIN_RESPONSE__",callback:function(e){window.postMessage(e)}});

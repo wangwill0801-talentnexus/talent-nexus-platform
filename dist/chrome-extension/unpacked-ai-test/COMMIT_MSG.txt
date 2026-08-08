@@ -1,0 +1,9 @@
+feat(ai-note): recruiter-grade Note v2 + source-bound metadata + simplified hard-guard gate
+
+- Backend: strong senior-recruiter prompt (TC prose + English ATS terms, truthfulness/evidence rules, no years subtraction, no role/keyword quotas, no LinkedIn/104 generation by Gemini).
+- Extension: assessNoteQuality reduced to HARD guards only (empty summary, first-person, weak title@company+years fallback, english-clause). Sparse resumes PASS; no richness/quota scoring.
+- ONE controlled retry on hard failure; merges ONLY recruiterSummary/targetRoles/coreKeywords; primary candidate/experience/education immutable.
+- Deterministic source metadata frozen per run: 104 resume code (from isolated current-candidate HTML textContent) + LinkedIn canonical URL; never both.
+- Note format: 【人選概要】/【適合職位】/【核心關鍵字】 + 【104履歷代碼】 or 【LinkedIn】.
+- Integrated identity fill (Name/Phone/Email) from authoritative primary parse; submitCalls=0 (recruiter manually saves).
+- 104 Note v2 = LinkedIn Note v2 (source-agnostic).

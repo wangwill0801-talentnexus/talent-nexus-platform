@@ -1,0 +1,60 @@
+[
+  {
+    "label": "identity fix shipped",
+    "file": "js/versions/v1/sites/site104.js",
+    "must": [
+      "function findOpenCandidateCard",
+      "cardPick="
+    ]
+  },
+  {
+    "label": "capture uses picker, not first card",
+    "file": "js/versions/v1/sites/site104.js",
+    "must": [
+      "var picked = findOpenCandidateCard(wrapper);",
+      "var card = picked.el;"
+    ]
+  },
+  {
+    "label": "ambiguous fails closed",
+    "file": "js/versions/v1/sites/site104.js",
+    "must": [
+      "ambiguous-omitted"
+    ]
+  },
+  {
+    "label": "matchUrl has 104",
+    "file": "js/versions/v1/default/page.js",
+    "must": [
+      "\"vip.104.com.tw\",\"51job.com\""
+    ]
+  },
+  {
+    "label": "TN104 gate",
+    "file": "js/versions/v1/default/page.js",
+    "must": [
+      "window.TN104&&window.TN104.isResumePage()"
+    ]
+  },
+  {
+    "label": "LinkedIn capture intact",
+    "file": "js/versions/v1/default/page.js",
+    "must": [
+      "-1<t.indexOf(\"linkedin\")?"
+    ]
+  },
+  {
+    "label": "LinkedIn gate intact",
+    "file": "js/versions/v1/default/page.js",
+    "must": [
+      "-1<F.indexOf(\"linkedin\")?"
+    ]
+  },
+  {
+    "label": "addFileName untouched",
+    "file": "js/versions/v1/default/page.js",
+    "must": [
+      "addFileName"
+    ]
+  }
+]

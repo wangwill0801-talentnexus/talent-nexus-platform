@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="favicon.png">
+  <title>Talent Nexus Connector — AI Resume Review</title>
+  <style>
+    :root { --bg:#0b1020; --panel:#121a32; --border:#27406e; --accent:#3b82f6; --ink:#e8eefc; --muted:#8aa0c8; }
+    body { font:15px/1.6 system-ui,sans-serif; margin:0; background:var(--bg); color:var(--ink); }
+    header { background:linear-gradient(90deg,#0e162a,#13203f); padding:16px 18px; display:flex; align-items:center; gap:12px; border-bottom:1px solid var(--border); }
+    header img { width:32px; height:32px; border-radius:7px; }
+    .wrap { max-width:760px; margin:24px auto; padding:0 16px; }
+    a { color:var(--accent); }
+    code { background:#0e162a; padding:2px 6px; border-radius:4px; border:1px solid var(--border); }
+    h1 { font-size:20px; }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="assets/branding/talent-nexus-connector-icon-master-512.png" alt="TNT">
+    <strong>Talent Nexus Connector — AI Resume Review</strong>
+  </header>
+  <div class="wrap">
+    <h2>Test Interface</h2>
+    <p>This is the standalone engineering/test page for the AI Resume parser.</p>
+    <p><a href="ai-review.html">→ Open AI Resume Review test page</a></p>
+    <p class="muted">Save-to-Pinpin is performed from the Chrome extension, where the
+      existing Pinpin session lives. The Netlify page only parses and previews.</p>
+    <h3>Local development</h3>
+    <p><code>npm install</code> → <code>netlify dev</code> → open
+      <code>http://localhost:8888/ai-review.html</code></p>
+  </div>
+</body>
+</html>

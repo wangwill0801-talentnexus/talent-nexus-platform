@@ -1,0 +1,37 @@
+{
+  "pluginVersion": "1.0.0",
+  "version": "1763626199077",
+  "backgrounds": [
+    "/plugin/js/versions/v1/background/request.js",
+    "/plugin/js/versions/v1/background/index.js",
+    "/plugin/js/versions/v1/background/data.js"
+  ],
+  "sites": [
+    {
+      "matches": [
+        "http://127.0.0.1:8080/"
+      ],
+      "js": [
+        "/plugin/js/versions/v1/pinpinsoft/page.js"
+      ]
+    },
+    {
+      "matches": [
+        ".*"
+      ],
+      "js": [
+        "/plugin/lib/angular-ui-bootstrap/ui-bootstrap-tpls.js",
+        "/plugin/lib/ui-select/select.min.js",
+        "/plugin/lib/jstree/jstree.min.js",
+        "/plugin/js/lib/jstreedirective/jsTree.directive.js",
+        "/plugin/js/versions/v1/default/directive.js",
+        "/plugin/js/versions/v1/default/page.js",
+        "/plugin/js/versions/v1/default/check_repeat.js"
+      ],
+      "css": [
+        "/plugin/lib/ui-select/select.min.css",
+        "/plugin/css/versions/v1/default/toolbox.css"
+      ]
+    }
+  ]
+}

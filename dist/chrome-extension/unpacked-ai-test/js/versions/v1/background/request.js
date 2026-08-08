@@ -1,0 +1,1 @@
+utils.message.register({type:"__PP_PLUGIN_REQUEST__",callback:function(e,s){var _=e.config;_.success=function(_){utils.message.sendToTab({type:"__PP_PLUGIN_RESPONSE__",subType:e.subType,response:_},s.tab.id)},_.error=function(_){console.log("__PP_PLUGIN_REQUEST__ error: ",_)},$.ajax(e.config)}});

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="favicon.png">
+  <title>Talent Nexus Connector — AI Resume Review</title>
+  <style>
+    :root {
+      --bg:#0b1020; --panel:#121a32; --panel2:#0e162a; --border:#27406e;
+      --accent:#3b82f6; --accent2:#60a5fa; --ink:#e8eefc; --muted:#8aa0c8;
+    }
+    body { font:14px/1.5 system-ui,sans-serif; margin:0; background:var(--bg); color:var(--ink); }
+    header { background:linear-gradient(90deg,#0e162a,#13203f); padding:12px 18px; display:flex; align-items:center; gap:12px; border-bottom:1px solid var(--border); }
+    header img { width:32px; height:32px; border-radius:7px; }
+    header .brand { font-weight:800; letter-spacing:.3px; }
+    header .brand small { display:block; font-weight:600; color:var(--muted); font-size:11px; letter-spacing:.5px; }
+    .wrap { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:16px; }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px; }
+    label { display:block; margin:8px 0 4px; color:var(--muted); font-size:12px; }
+    textarea, input { background:var(--panel2); color:var(--ink); border:1px solid var(--border); border-radius:7px; padding:7px; width:100%; box-sizing:border-box; }
+    textarea:focus, input:focus { outline:1px solid var(--accent); }
+    button { background:var(--accent); color:#04122e; border:0; border-radius:7px; padding:8px 13px; cursor:pointer; font-weight:700; }
+    button.ghost { background:transparent; color:var(--ink); border:1px solid var(--border); }
+    pre { background:var(--panel2); border:1px solid var(--border); border-radius:9px; padding:10px; overflow:auto; max-height:60vh; }
+    .muted { opacity:.7; font-size:12px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    h3 { margin:0; }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="assets/branding/talent-nexus-connector-icon-master-512.png" alt="TNT">
+    <div class="brand">Talent Nexus Connector<small>AI Resume Review · Test Interface</small></div>
+  </header>
+  <div class="wrap">
+    <div class="card">
+      <label>API base URL <span class="muted">(local: http://localhost:8888)</span></label>
+      <input id="api-base" value="http://localhost:8888">
+      <div class="row" style="margin:8px 0;">
+        <button id="btn-health" class="ghost">Check Health</button>
+        <span id="health" class="muted"></span>
+      </div>
+
+      <label>Source</label>
+      <input id="source" value="104">
+      <label style="margin-top:8px;">Resume text (anonymized)</label>
+      <textarea id="input-text" style="height:160px;"></textarea>
+      <label style="margin-top:8px;">Resume HTML (dev/test)</label>
+      <textarea id="input-html" style="height:90px;"></textarea>
+      <div class="row" style="margin-top:8px;">
+        <button id="btn-sample">Load Sample</button>
+        <button id="btn-parse">✨ AI Parse</button>
+      </div>
+      <div id="status" style="margin-top:8px;font-weight:700;"></div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <h3>Editable Candidate Form</h3>
+        <button id="btn-reset" class="ghost">Reset</button>
+      </div>
+      <div id="form"></div>
+      <div class="row" style="justify-content:space-between;margin-top:12px;">
+        <h3>Structured Resume JSON</h3>
+        <button id="btn-copy" class="ghost">Copy</button>
+      </div>
+      <pre id="json"></pre>
+      <p class="muted">Engineering/test page. Save-to-Pinpin lives in the Chrome extension where the Pinpin session exists.</p>
+    </div>
+  </div>
+
+  <script type="module" src="assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+var param2=versionNo<72?["responseHeaders","blocking"]:["responseHeaders","blocking","extraHeaders"];chrome.webRequest.onHeadersReceived.addListener(function(e){return console.log("onHeadersReceived",e),{responseHeaders:e.responseHeaders}},{urls:["*://wapi/zpjob/view/geek/info/v2*"]},param2);

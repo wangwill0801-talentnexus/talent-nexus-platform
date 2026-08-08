@@ -1,0 +1,17 @@
+<!DOCTYPE html><html ng-app="App"><head><meta charset="utf-8"><link rel="stylesheet" href="lib/bootstrap/css/bootstrap.min.css"><link rel="stylesheet" href="js/lib/angular/angular-csp.css"><title>品聘插件配置</title><style>body {
+    font-family: 'Microsoft YaHei', Arial, sans-serif;
+}</style></head><body ng-controller="OptionsCtrl"><div class="card" style="width: 600px; margin: 20px auto;"><div class="card-header">品聘插件配置</div><div class="card-body"><form name="form" ng-submit="submit(options)" novalidate><div class="form-group row"><label class="col-form-label col-sm-4">服务器地址:</label><div class="col-sm-8"><input class="form-control" name="api" type="url" placeholder="例(http://demo.ppinsoft.cn)" ng-model="options.api" required ng-class="{'is-invalid': (form.$submitted || form.api.$touched) &amp;&amp; form.api.$invalid}"></div></div><!--.form-group.rowlabel.col-form-label.col-sm-4 用户名:
+.col-sm-8
+    input.form-control(name="username", type="text", ng-model="options.username", required, ng-class="{'is-invalid': (form.$submitted || form.username.$touched) && form.username.$invalid}")
+--><!--.form-group.rowlabel.col-form-label.col-sm-4 密码:
+.col-sm-8
+    input.form-control(name="password", type="password", ng-model="options.password", required, ng-class="{'is-invalid': (form.$submitted || form.password.$touched) && form.password.$invalid}")
+--><div class="form-group row" ng-if="debug&gt;=7"><label class="col-form-label col-sm-4">插件服务器地址:</label><div class="col-sm-8"><input class="form-control" name="server" type="url" placeholder="http://demo.ppinsoft.cn" ng-model="options.server" required ng-class="{'is-invalid': (form.$submitted || form.server.$touched) &amp;&amp; form.server.$invalid}"></div></div><!--.form-group.row.col-sm-4 插件更新:
+.col-sm-8
+    .form-check.form-check-inline
+        input.form-check-input(name="dynamicUpdate", type="checkbox", ng-model="options.dynamicUpdate")
+        label.form-check-label 动态更新
+    .form-check.form-check-inline
+        input.form-check-input(name="autoCheckUpdate", type="checkbox", ng-model="options.autoCheckUpdate")
+        label.form-check-label 自动检查更新
+--><div class="form-group row"><div class="col-sm-4"></div><div class="col-sm-8"><button class="btn btn-sm btn-primary" type="submit" ng-disabled="form.$invalid">保存</button></div></div></form></div></div><script src="js/lib/jquery/jquery.js"></script><script src="js/lib/angular/angular.min.js"></script><script src="js/core/utils.js"></script><script src="js/options.js"></script></body></html>

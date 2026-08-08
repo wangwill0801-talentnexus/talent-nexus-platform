@@ -1,0 +1,1 @@
+var Config={},Schema={};utils.storeAsync.get("config").then(function(e){(Config=e).server&&e.api||chrome.runtime.openOptionsPage()});

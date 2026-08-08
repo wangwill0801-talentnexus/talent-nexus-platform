@@ -1,0 +1,16 @@
+{
+  "name": "talent-nexus-ai-page",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Talent Nexus AI Resume Review — Netlify backend + test page (stateless, no DB).",
+  "type": "module",
+  "scripts": {
+    "start": "netlify dev",
+    "start:mock": "cross-env AI_MOCK_MODE=true netlify dev",
+    "test": "node --test test/**/*.test.mjs"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "netlify-cli": "^17.0.0"
+  }
+}
