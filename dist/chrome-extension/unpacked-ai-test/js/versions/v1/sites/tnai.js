@@ -1518,10 +1518,10 @@ function tnUIText(lang, key) {
         '#addResume .can-drag a[ng-click="close()"]:hover{ color: #ffffff !important; }',
         // Subtitle below header.
         '#tnai-brand-subtitle{ width: 100% !important; box-sizing: border-box !important; padding: 8px 16px 6px !important; color: #eaf4ff !important; text-align: left !important; white-space: normal !important; }',
-        // Form: restore GOLDEN BASE width (400px) -> native fields keep original
-        // size; wider shell (560) leaves breathing room on the right. NOT a field
-        // width override — it restores the original Pinpin window width.
-        '#addResume .bg-write > form, #addResume form.form-horizontal{ max-width: ' + TNAI_GOLDEN_FORM_W + ' !important; margin: 0 !important; }',
+        // Form: fill the (now field-width) shell so fields align to the frame edge.
+        // Shell width = TNAI_GOLDEN_FORM_W, so outer frame == field width (no extra
+        // right-side breathing room) per current product direction.
+        '#addResume .bg-write > form, #addResume form.form-horizontal{ max-width: 100% !important; margin: 0 !important; }',
         '#addResume .form-horizontal{ padding: 12px 16px 4px !important; }',
         // Prevent native flex rows (.input-group) from overflowing the column.
         '#addResume .input-group{ min-width: 0 !important; }',
@@ -1540,7 +1540,7 @@ function tnUIText(lang, key) {
     // --- inline !important on the REAL visible card (.bg-write) —
     //   beats Pinpin's later class rule. BIG+TALL glass shell.
     var __set = function (k, v) { card.style.setProperty(k, v, 'important'); };
-    __set('width', '560px'); __set('max-width', '92vw'); __set('min-width', '440px');
+    __set('width', TNAI_GOLDEN_FORM_W); __set('max-width', '92vw'); __set('min-width', '360px');
     __set('height', '86vh'); __set('max-height', '92vh'); __set('min-height', '460px');
     __set('box-sizing', 'border-box');
     __set('display', 'block');
