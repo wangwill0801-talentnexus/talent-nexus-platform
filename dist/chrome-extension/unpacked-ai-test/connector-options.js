@@ -37,7 +37,7 @@
       customNote: '未知的自訂網址會被保留，不會被預設值覆寫。',
       save: '儲存設定',
       saved: '已儲存',
-      preview: function (u) { return 'ATS 基礎位址：@url:`' + u + '`'; }
+      endpoint: function (u) { return 'ATS 端點：' + u; }
     },
     'en': {
       connector: 'Talent Nexus Connector',
@@ -47,14 +47,14 @@
       customNote: 'Unknown custom URLs are preserved and not overwritten by presets.',
       save: 'Save Settings',
       saved: 'Saved',
-      preview: function (u) { return 'ATS base: @url:`' + u + '`'; }
+      endpoint: function (u) { return 'ATS endpoint: ' + u; }
     }
   };
   function ui(lang) { return LABELS[lang] || LABELS['zh-TW']; }
 
   var langEl = document.getElementById('tnAtsLang');
   var customEl = document.getElementById('tnAtsCustom');
-  var previewEl = document.getElementById('tnAtsUrlPreview');
+  var endpointEl = document.getElementById('tnAtsEndpoint');
   var savedEl = document.getElementById('tnAtsSaved');
   if (!langEl) return; // Options page not mounted
 
@@ -85,6 +85,23 @@
     return 'custom';
   }
 
+  // UI-only hide of the legacy Pinpin options card (品聘插件配置 / 服務器地址 /
+  // 保存). The Talent Nexus Connector card is the primary Options UI. We locate
+  // the EXACT native Pinpin server-address control (input[name="api"]) and hide
+  // only its enclosing Bootstrap .card -- deterministic, not a broad .card
+  // query. The card's Angular controller, ng-model, storage keys and native
+  // Save are preserved underneath; we only set display:none on the element.
+  var apiInput = document.querySelector('input[name="api"]');
+  var pinpinCard = apiInput ? apiInput.closest('.card') : null;
+  if (pinpinCard) {
+    pinpinCard.style.display = 'none';
+    pinpinCard.setAttribute('data-tn-hidden', '1');
+  }
+  // Localize the browser tab title to match the connector brand.
+  if (document.title && document.title.indexOf('Talent Nexus') < 0) {
+    document.title = 'Talent Nexus Connector';
+  }
+
   var currentApi = '';
 
   function applyLabels(lang) {
@@ -104,11 +121,9 @@
 
   function render(lang) {
     applyLabels(lang);
-    if (lang === 'custom') {
-      previewEl.textContent = (ui(lang).preview(currentApi));
-    } else {
-      previewEl.textContent = ui(lang).preview(PRESETS[lang]);
-    }
+    // Endpoint shown ONLY inside Advanced as plain text (no @url: debug syntax).
+    var ep = (lang === 'custom') ? currentApi : PRESETS[lang];
+    if (endpointEl) endpointEl.textContent = ep ? ui(lang).endpoint(ep) : '';
   }
 
   function load() {
