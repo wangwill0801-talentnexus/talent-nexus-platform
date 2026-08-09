@@ -1475,148 +1475,149 @@ function tnUIText(lang, key) {
     }
   }
 
+  // =========================================================================
+  // New Talent Layer B (REAL Pinpin window) — heavy visual correction v3
+  // Architecture (verified against Golden Base add_resume.html):
+  //   #addResume (draggable, Pinpin MOVE owner)
+  //     <div class="bg">                      (Pinpin move wrapper, no width/bg)
+  //       <div class="bg-write">              (VISIBLE SHELL — TN owns width/glass)
+  //         <a ng-click="close()">X</a>       (native close, SIBLING of .can-drag)
+  //         <div class="can-drag">New talent</div>  (native drag handle / header)
+  //         <form class="form-horizontal">    (native fields, width:100% of form)
+  // Pinpin has NO !important width on .bg-write/.bg/#addResume — so TN wins.
+  // Golden Base window width was ~400px; we widen the SHELL to 560 (breathing
+  // room) and cap the form to its ORIGINAL width so native fields stay Golden-sized.
+  // Manual resize removed; native window MOVE via .can-drag retained.
+  // =========================================================================
   var TNAI_THEME_ID = 'tnai-newtalent-theme';
-  function applyNewTalentTheme() {
-    if (global.document.getElementById(TNAI_THEME_ID)) return;
-    var root = global.document.getElementById('addResume');
-    if (!root) return;
-    var style = global.document.createElement('style');
-    style.id = TNAI_THEME_ID;
-    style.textContent = [
-      // Host: just wrap the native Pinpin card. Do NOT force a wide layout
-      // (a forced width here was the root cause of the horizontal scrollbar).
-      '#addResume{',
-      '  box-sizing: border-box !important;',
-      '  width: auto !important;',
-      '  max-width: 92vw !important;',
-      '  background: transparent !important;',
-      '  border: 0 !important;',
-      '  box-shadow: none !important;',
-      '  margin: 0 !important;',
-      '  padding: 0 !important;',
-      '}',
-      // Pinpin move wrapper: keep transparent so the glass window reads as glass.
-      '#addResume .bg{ background: transparent !important; border: 0 !important; box-shadow: none !important; }',
-      // .bg-write = THE VISIBLE NEW TALENT WINDOW. Real glass material (restored
-      // from the old blue diagnostic window): translucent blue, frosted blur,
-      // subtle saturation, soft border, elegant shadow. Flex column guarantees
-      // Tag -> Note -> Status -> AI Fill -> Save stack in natural vertical flow
-      // (no overlap, no absolute Status). Width/height are owned here (and
-      // reinforced inline !important below to beat Pinpin's later class rule).
-      '#addResume .bg-write{',
-      '  box-sizing: border-box !important;',
-      '  display: flex !important;',
-      '  flex-direction: column !important;',
-      '  background: rgba(225, 241, 255, 0.72) !important;',
-      '  -webkit-backdrop-filter: blur(14px) saturate(120%) !important;',
-      '  backdrop-filter: blur(14px) saturate(120%) !important;',
-      '  border: 1px solid rgba(255, 255, 255, 0.55) !important;',
-      '  border-radius: 12px !important;',
-      '  box-shadow: 0 14px 44px rgba(20, 55, 90, 0.30), 0 2px 8px rgba(20, 55, 90, 0.18) !important;',
-      '  overflow-x: hidden !important;',
-      '  overflow-y: auto !important;',
-      '}',
-      // Native .can-drag title bar -> Talent Nexus navy glass top bar, STICKY so it
-      // stays visible while the form scrolls. Native Pinpin drag (on .bg) is kept.
-      '#addResume .can-drag{',
-      '  position: sticky !important;',
-      '  top: 0 !important;',
-      '  z-index: 60 !important;',
-      '  background: rgba(11, 42, 91, 0.92) !important;',
-      '  -webkit-backdrop-filter: blur(14px) !important;',
-      '  backdrop-filter: blur(14px) !important;',
-      '  color: #eaf2ff !important;',
-      '  height: 36px !important;',
-      '  line-height: 36px !important;',
-      '  font-size: 14px !important;',
-      '  font-weight: 700 !important;',
-      '  letter-spacing: .3px !important;',
-      '  text-align: left !important;',
-      '  padding: 0 12px !important;',
-      '  margin: 0 0 6px !important;',
-      '  border-radius: 10px 10px 0 0 !important;',
-      '  cursor: move !important;',
-      '}',
-      // Native X close (ng-click="close()") — keep, restyle for contrast.
-      '#addResume .can-drag a{',
-      '  color: #eaf2ff !important;',
-      '  font-size: 18px !important;',
-      '  line-height: 36px !important;',
-      '  width: 24px !important;',
-      '  text-align: center !important;',
-      '  text-decoration: none !important;',
-      '  cursor: pointer !important;',
-      '}',
-      '#addResume .can-drag a:hover{ color: #ffffff !important; }',
-      // Native form controls keep their ORIGINAL Pinpin width/size. We removed the
-      // old TN field-width / border / radius / padding overrides — the extra outer
-      // width is breathing room, NOT wider inputs. Only a light focus ring for
-      // legibility on glass.
-      '#addResume input:focus, #addResume textarea:focus, #addResume select:focus{',
-      '  outline: none !important;',
-      '  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.22) !important;',
-      '}',
-      '#addResume textarea{ box-sizing: border-box !important; resize: vertical !important; }',
-      '#addResume label, #addResume .section-title, #addResume h1, #addResume h2, #addResume h3{',
-      '  color: #13386e !important;',
-      '}',
-      // Native Pinpin Original Save -> solid Talent Nexus blue (primary persist).
-      '#addResume button:not(#tnai-launcher), #addResume input[type=submit], #addResume .btn-save, #addResume .save-btn{',
-      '  background: linear-gradient(135deg, #2563eb, #3b82f6) !important;',
-      '  color: #ffffff !important;',
-      '  border: 1px solid rgba(255,255,255,.5) !important;',
-      '  border-radius: 12px !important;',
-      '  padding: 10px 20px !important;',
-      '  font: 700 14px/1 system-ui, sans-serif !important;',
-      '  cursor: pointer !important;',
-      '  box-shadow: 0 8px 22px rgba(30,80,180,.35) !important;',
-      '}',
-      '#addResume button:not(#tnai-launcher):hover, #addResume input[type=submit]:hover{ filter: brightness(1.06) !important; }',
-      // UI-ONLY: hide WeChat row if present. Model/backend untouched.
-      '.tn-hide-wechat{ display: none !important; }',
-      // Subtitle below the title bar.
-      '#tnai-brand-subtitle{ width: 100% !important; box-sizing: border-box !important; padding: 6px 16px 8px !important; color: #eaf4ff !important; text-align: left !important; white-space: normal !important; }'
-    ].join('\n');
-    (global.document.head || global.document.documentElement).appendChild(style);
-    // Inline !important on the ACTUAL visible card (.bg-write) — beats Pinpin's
-    // later-loaded !important class rule. BIG + TALL glass window; fields stay
-    // native width (breathing room comes from the wider frame, not wider inputs).
-    var __card = root.querySelector('.bg-write');
-    if (__card) {
-      var __set = function (k, v) { __card.style.setProperty(k, v, 'important'); };
-      __set('width', '560px'); __set('max-width', '92vw'); __set('min-width', '440px');
-      __set('height', '86vh'); __set('max-height', '92vh'); __set('min-height', '460px');
-      __set('box-sizing', 'border-box');
-      __set('overflow-x', 'hidden'); __set('overflow-y', 'auto');
-      __set('display', 'flex'); __set('flex-direction', 'column');
-      __set('background', 'rgba(225, 241, 255, 0.72)');
-      __set('-webkit-backdrop-filter', 'blur(14px) saturate(120%)');
-      __set('backdrop-filter', 'blur(14px) saturate(120%)');
-      __set('border', '1px solid rgba(255, 255, 255, 0.55)');
-      __set('border-radius', '12px');
-      __set('box-shadow', '0 14px 44px rgba(20, 55, 90, 0.30), 0 2px 8px rgba(20, 55, 90, 0.18)');
-      __set('position', 'relative');
-      __set('padding', '10px 16px 16px');
+  var TNAI_GOLDEN_FORM_W = '400px'; // restored Golden Base New Talent width
+
+  function styleNewTalentOnce(root) {
+    var card = root.querySelector('.bg-write');
+    if (!card) return false;
+    if (card.classList.contains('tn-newtalent-ready')) return true; // already styled
+
+    // --- stylesheet (class-level) ---
+    if (!global.document.getElementById(TNAI_THEME_ID)) {
+      var style = global.document.createElement('style');
+      style.id = TNAI_THEME_ID;
+      style.textContent = [
+        // Host: transparent wrapper, width owned by .bg-write.
+        '#addResume{ box-sizing: border-box !important; width: auto !important; max-width: 92vw !important; background: transparent !important; border: 0 !important; box-shadow: none !important; margin: 0 !important; padding: 0 !important; }',
+        // Pinpin move wrapper transparent so glass reads as glass.
+        '#addResume .bg{ background: transparent !important; border: 0 !important; box-shadow: none !important; }',
+        // .bg-write = VISIBLE SHELL. Block (not flex) so native .input-group flex
+        // rows don't overflow. Real frosted glass: low alpha so page shows through.
+        '#addResume .bg-write{ box-sizing: border-box !important; display: block !important; background: rgba(214, 236, 255, 0.40) !important; -webkit-backdrop-filter: blur(16px) saturate(130%) !important; backdrop-filter: blur(16px) saturate(130%) !important; border: 1px solid rgba(255,255,255,0.55) !important; border-radius: 12px !important; box-shadow: 0 16px 50px rgba(20,55,90,0.30), 0 2px 8px rgba(20,55,90,0.18) !important; overflow-x: hidden !important; overflow-y: auto !important; padding: 0 !important; }',
+        // First-paint guard: hide native form until TN layout is ready (no flash).
+        '#addResume .bg-write:not(.tn-newtalent-ready){ visibility: hidden !important; }',
+        // .can-drag = WINDOW HEADER (sticky top, flush, no blank band). Flex:
+        // brand left, native X right (X moved inside at runtime).
+        '#addResume .can-drag{ position: sticky !important; top: 0 !important; z-index: 60 !important; display: flex !important; align-items: center !important; justify-content: space-between !important; background: rgba(11,42,91,0.94) !important; -webkit-backdrop-filter: blur(14px) !important; backdrop-filter: blur(14px) !important; color: #eaf2ff !important; height: 38px !important; line-height: 38px !important; font-size: 15px !important; font-weight: 700 !important; letter-spacing: .3px !important; text-align: left !important; padding: 0 12px !important; margin: 0 !important; border-radius: 11px 11px 0 0 !important; cursor: move !important; }',
+        '#addResume .can-drag a[ng-click="close()"]{ float: none !important; color: #eaf2ff !important; font-size: 19px !important; line-height: 38px !important; width: 26px !important; text-align: center !important; text-decoration: none !important; cursor: pointer !important; }',
+        '#addResume .can-drag a[ng-click="close()"]:hover{ color: #ffffff !important; }',
+        // Subtitle below header.
+        '#tnai-brand-subtitle{ width: 100% !important; box-sizing: border-box !important; padding: 8px 16px 6px !important; color: #eaf4ff !important; text-align: left !important; white-space: normal !important; }',
+        // Form: restore GOLDEN BASE width (400px) -> native fields keep original
+        // size; wider shell (560) leaves breathing room on the right. NOT a field
+        // width override — it restores the original Pinpin window width.
+        '#addResume .bg-write > form, #addResume form.form-horizontal{ max-width: ' + TNAI_GOLDEN_FORM_W + ' !important; margin: 0 !important; }',
+        '#addResume .form-horizontal{ padding: 12px 16px 4px !important; }',
+        // Prevent native flex rows (.input-group) from overflowing the column.
+        '#addResume .input-group{ min-width: 0 !important; }',
+        '#addResume .form-control, #addResume input, #addResume select, #addResume textarea{ min-width: 0 !important; box-sizing: border-box !important; }',
+        // Light focus ring only (fields stay native/readable on glass).
+        '#addResume input:focus, #addResume textarea:focus, #addResume select:focus{ outline: none !important; box-shadow: 0 0 0 3px rgba(59,130,246,0.22) !important; }',
+        '#addResume label, #addResume .section-title, #addResume h1, #addResume h2, #addResume h3{ color: #13386e !important; }',
+        // Native Pinpin Original Save -> Talent Nexus blue (primary persist).
+        '#addResume button:not(#tnai-launcher), #addResume input[type=submit], #addResume .btn-save, #addResume .save-btn{ background: linear-gradient(135deg,#2563eb,#3b82f6) !important; color: #ffffff !important; border: 1px solid rgba(255,255,255,.5) !important; border-radius: 12px !important; padding: 10px 20px !important; font: 700 14px/1 system-ui,sans-serif !important; cursor: pointer !important; box-shadow: 0 8px 22px rgba(30,80,180,.35) !important; }',
+        '#addResume button:not(#tnai-launcher):hover, #addResume input[type=submit]:hover{ filter: brightness(1.06) !important; }',
+        '.tn-hide-wechat{ display: none !important; }'
+      ].join('\n');
+      (global.document.head || global.document.documentElement).appendChild(style);
     }
+
+    // --- inline !important on the REAL visible card (.bg-write) —
+    //   beats Pinpin's later class rule. BIG+TALL glass shell.
+    var __set = function (k, v) { card.style.setProperty(k, v, 'important'); };
+    __set('width', '560px'); __set('max-width', '92vw'); __set('min-width', '440px');
+    __set('height', '86vh'); __set('max-height', '92vh'); __set('min-height', '460px');
+    __set('box-sizing', 'border-box');
+    __set('display', 'block');
+    __set('overflow-x', 'hidden'); __set('overflow-y', 'auto');
+    __set('background', 'rgba(214, 236, 255, 0.40)');
+    __set('-webkit-backdrop-filter', 'blur(16px) saturate(130%)');
+    __set('backdrop-filter', 'blur(16px) saturate(130%)');
+    __set('border', '1px solid rgba(255, 255, 255, 0.55)');
+    __set('border-radius', '12px');
+    __set('box-shadow', '0 16px 50px rgba(20, 55, 90, 0.30), 0 2px 8px rgba(20, 55, 90, 0.18)');
+    __set('position', 'relative');
+    __set('padding', '0');
+
+    // Move native close <a ng-click="close()"> INTO .can-drag (right side).
+    // DOM move preserves the Angular ng-click binding (element+listener travel).
+    var __drag = card.querySelector('.can-drag');
+    var __x = card.querySelector('a[ng-click="close()"]');
+    if (__drag && __x && __x.parentNode !== __drag) __drag.appendChild(__x);
+
+    // Branding (title text + subtitle) — applied AFTER X move so it targets the
+    // title text node only.
     applyNewTalentBranding();
-    log('new-talent theme applied');
+
+    card.classList.add('tn-newtalent-ready');
+    card.style.visibility = 'visible'; // clear inline hide (class rule no longer applies)
+    // Brief opacity settle (layout already final — no geometry animation).
+    card.style.opacity = '0';
+    requestAnimationFrame(function () { card.style.transition = 'opacity 100ms ease'; card.style.opacity = '1'; });
+    return true;
   }
-function removeNewTalentTheme() {
+
+  // First-paint guard: hide the native form the instant .bg-write exists, then
+  // style synchronously BEFORE the browser paints. Re-applied per candidate open
+  // (reopen-safe). Fail-open: force reveal after a bounded timeout.
+  var __ntObs = null;
+  function watchNewTalent() {
+    if (__ntObs) return;
+    var target = global.document.getElementById('kpBox') || global.document.body || global.document.documentElement;
+    __ntObs = new MutationObserver(function (muts) {
+      for (var i = 0; i < muts.length; i++) {
+        var m = muts[i];
+        var nodes = m.addedNodes;
+        for (var n = 0; nodes && n < nodes.length; n++) {
+          var el = nodes[n];
+          if (!el || el.nodeType !== 1) continue;
+          var card = (el.id === 'addResume' || el.querySelector) ? (el.querySelector ? el.querySelector('.bg-write') : null) : null;
+          if (el.classList && el.classList.contains('bg-write')) card = el;
+          if (!card && el.querySelector) card = el.querySelector('.bg-write');
+          if (card) {
+            // hide immediately, then style synchronously before paint
+            card.style.visibility = 'hidden';
+            styleNewTalentOnce(global.document.getElementById('addResume') || el.closest('#addResume') || el);
+          }
+        }
+      }
+    });
+    __ntObs.observe(target, { childList: true, subtree: true });
+  }
+
+  function applyNewTalentTheme() {
+    // Manual trigger for cases where the observer hasn't fired yet.
+    var root = global.document.getElementById('addResume');
+    if (root) styleNewTalentOnce(root);
+    watchNewTalent();
+    // Fail-open safety: if styling didn't complete, reveal the native form.
+    setTimeout(function () {
+      var r = global.document.getElementById('addResume');
+      var c = r && r.querySelector('.bg-write');
+      if (c && !c.classList.contains('tn-newtalent-ready')) c.style.visibility = 'visible';
+    }, 700);
+  }
+
+  function removeNewTalentTheme() {
     var t = global.document.getElementById(TNAI_THEME_ID);
     if (t && t.parentNode) t.parentNode.removeChild(t);
     removeNewTalentBranding();
   }
-
-  // =========================================================================
-  // Floating launcher (entry point the user actually sees)
-  // =========================================================================
-  // The panel is rendered on demand. We mount a small floating trigger so the
-  // AI Review feature is discoverable on the New Talent page — without ever
-  // auto-modifying the Original workflow. Clicking it opens the panel.
-  // Diagnostic routing state (routeDiag) is preserved internally for debugging
-  // but the visible LinkedIn/B2 diagnostic overlay has been removed from the
-  // normal recruiter UI. updateB2DiagBadge is now a no-op so capture/AI Fill
-  // never renders an overlay.
   function updateB2DiagBadge() { /* removed: no visible diagnostic overlay */ }
   function mountLauncher() {
     if (global.document.getElementById('tnai-launcher')) return;
