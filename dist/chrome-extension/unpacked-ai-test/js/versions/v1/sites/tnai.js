@@ -1443,8 +1443,7 @@ function tnUIText(lang, key) {
     // 2) Inject a SMALL subtitle directly BELOW the native title bar (not above).
     var sub = global.document.createElement('div');
     sub.id = TNAI_BRAND_ID;
-    sub.style.cssText = 'padding:2px 4px 8px;font:500 12px/1.2 system-ui,sans-serif;' +
-      'color:#2b5a9e;letter-spacing:.2px;';
+    sub.style.cssText = 'width:100%;box-sizing:border-box;padding:6px 16px 8px;font:500 11px/1.3 system-ui,sans-serif;color:#eaf4ff;letter-spacing:.2px;text-align:left;white-space:normal;';
     tnGetLanguage(function (_l) { sub.textContent = tnUIText(_l, 'subtitle'); });
     if (bar && bar.parentNode) {
       bar.parentNode.insertBefore(sub, bar.nextSibling);
@@ -1484,53 +1483,21 @@ function tnUIText(lang, key) {
     var style = global.document.createElement('style');
     style.id = TNAI_THEME_ID;
     style.textContent = [
-      // Outer native New Talent shell -> frosted light-blue glass window.
+      // #addResume fills the real card (.bg-write). Width is owned by .bg-write and
+      // applied via inline !important in JS (Pinpin's later-loaded !important class
+      // rule beats this injected stylesheet, so class selectors cannot widen it).
       '#addResume{',
       '  box-sizing: border-box !important;',
       '  width: 100% !important;',
-      '  max-width: 90vw !important;',
-      '  min-width: 440px !important;',
-      '  max-height: 92vh !important;',
-      '  min-height: 420px !important;',
-      '  overflow-x: hidden !important;',
-      '  overflow-y: auto !important;',
-      '  background: rgba(235, 246, 255, 0.80) !important;',
-      '  -webkit-backdrop-filter: blur(16px) saturate(140%) !important;',
-      '  backdrop-filter: blur(16px) saturate(140%) !important;',
-      '  border: 1px solid rgba(255, 255, 255, 0.65) !important;',
-      '  border-radius: 16px !important;',
-      '  box-shadow: 0 18px 50px rgba(20, 55, 90, 0.18) !important;',
-      '  padding: 14px 18px 18px !important;',
-      '  color: #0b1b3a !important;',
-      '}',
-      '#addResume .bg-write{ width: 100% !important; background: transparent !important; border: 0 !important; box-shadow: none !important; }',
-      '.tn-shell{',
-      '  box-sizing: border-box !important;',
-      '  width: 560px !important;',
-      '  max-width: 90vw !important;',
-      '  min-width: 440px !important;',
-      '  max-height: 92vh !important;',
-      '  min-height: 420px !important;',
-      '  background: rgba(235, 246, 255, 0.80) !important;',
-      '  -webkit-backdrop-filter: blur(16px) saturate(140%) !important;',
-      '  backdrop-filter: blur(16px) saturate(140%) !important;',
-      '  border: 1px solid rgba(255, 255, 255, 0.65) !important;',
-      '  border-radius: 16px !important;',
-      '  box-shadow: 0 18px 50px rgba(20, 55, 90, 0.18) !important;',
+      '  background: transparent !important;',
+      '  border: 0 !important;',
+      '  box-shadow: none !important;',
+      '  margin: 0 !important;',
       '  padding: 0 !important;',
-      '  color: #0b1b3a !important;',
-      '  position: relative !important;',
-      '},',
-      '.tn-shell .tn-resize{',
-      '  position: absolute !important;',
-      '  right: 2px !important;',
-      '  bottom: 2px !important;',
-      '  width: 16px !important;',
-      '  height: 16px !important;',
-      '  cursor: nwse-resize !important;',
-      '  z-index: 60 !important;',
-      '  background: linear-gradient(135deg, transparent 50%, rgba(43,90,158,.55) 50%, rgba(43,90,158,.55) 62%, transparent 62%, transparent 74%, rgba(43,90,158,.55) 74%, rgba(43,90,158,.55) 86%, transparent 86%);',
-      '},',
+      '}',
+      // .bg-write is THE VISIBLE CARD. Glass is applied inline in JS; this rule is a
+      // transparent fallback so nothing opaque leaks before the inline override runs.
+      '#addResume .bg-write{ background: transparent !important; border: 0 !important; box-shadow: none !important; }',
       // Native .can-drag title bar -> Talent Nexus navy/blue glass top bar.
       '#addResume .can-drag{',
       '  background: rgba(11, 42, 91, 0.92) !important;',
@@ -1545,7 +1512,7 @@ function tnUIText(lang, key) {
       '  text-align: left !important;',
       '  padding: 0 12px !important;',
       '  margin: 0 0 6px !important;',
-      '  border-radius: 12px 12px 0 0 !important;',
+      '  border-radius: 10px 10px 0 0 !important;',
       '  cursor: move !important;',
       '}',
       // X close (native ng-click="close()") — keep, just restyle.
@@ -1558,19 +1525,18 @@ function tnUIText(lang, key) {
       '  cursor: pointer !important;',
       '}',
       '#addResume .can-drag a:hover{ color: #ffffff !important; }',
-      // Form fields — clean light glass inputs. Single-line inputs/selects keep
-      // their NATIVE proportion (capped) so they do NOT stretch across a wider
-      // window; the Note textarea may use more of the available width.
+      // Form fields — NATIVE-LIKE proportions. Single-line inputs/selects stay
+      // capped; the WIDER window = breathing room, not giant fields.
       '#addResume input:not([type=checkbox]):not([type=radio]), #addResume select{',
-      '  max-width: 360px !important;',
-      '  background: rgba(255, 255, 255, 0.78) !important;',
+      '  max-width: 340px !important;',
+      '  background: rgba(255, 255, 255, 0.82) !important;',
       '  border: 1px solid rgba(120, 170, 255, 0.45) !important;',
       '  border-radius: 10px !important;',
       '  color: #0b1b3a !important;',
       '  padding: 8px 11px !important;',
       '  font-size: 14px !important;',
       '}',
-      '#addResume textarea{ width: 100% !important; max-width: 560px !important; min-height: 130px !important; resize: vertical !important; }',
+      '#addResume textarea{ width: 100% !important; max-width: 520px !important; min-height: 130px !important; resize: vertical !important; box-sizing: border-box !important; }',
       '#addResume input:focus, #addResume textarea:focus, #addResume select:focus{',
       '  border: 1px solid rgba(59, 130, 246, 0.95) !important;',
       '  outline: none !important;',
@@ -1591,10 +1557,30 @@ function tnUIText(lang, key) {
       '  box-shadow: 0 8px 22px rgba(30,80,180,.35) !important;',
       '}',
       '#addResume button:not(#tnai-launcher):hover, #addResume input[type=submit]:hover{ filter: brightness(1.06) !important; }',
-      // UI-ONLY: hide WeChat row if present (Taiwan workflow). Model/backend untouched.
-      '.tn-hide-wechat{ display: none !important; }'
+      // UI-ONLY: hide WeChat row if present. Model/backend untouched.
+      '.tn-hide-wechat{ display: none !important; }',
+      // Subtitle below the title bar.
+      '#tnai-brand-subtitle{ width: 100% !important; box-sizing: border-box !important; padding: 6px 16px 8px !important; color: #eaf4ff !important; text-align: left !important; white-space: normal !important; }'
     ].join('\n');
     (global.document.head || global.document.documentElement).appendChild(style);
+    // Inline !important on the ACTUAL visible card (.bg-write) — beats Pinpin's
+    // later-loaded !important class rule (class specificity + load order lose).
+    var __card = root.querySelector('.bg-write');
+    if (__card) {
+      var __set = function (k, v) { __card.style.setProperty(k, v, 'important'); };
+      __set('width', '560px'); __set('max-width', '90vw'); __set('min-width', '440px');
+      __set('max-height', '92vh'); __set('min-height', '420px');
+      __set('box-sizing', 'border-box');
+      __set('overflow-x', 'hidden'); __set('overflow-y', 'auto');
+      __set('background', 'rgba(225, 241, 255, 0.72)');
+      __set('-webkit-backdrop-filter', 'blur(14px) saturate(120%)');
+      __set('backdrop-filter', 'blur(14px) saturate(120%)');
+      __set('border', '1px solid rgba(255, 255, 255, 0.55)');
+      __set('border-radius', '10px');
+      __set('box-shadow', '0 14px 44px rgba(20, 55, 90, 0.30), 0 2px 8px rgba(20, 55, 90, 0.18)');
+      __set('position', 'relative');
+      __set('padding', '8px 14px 14px');
+    }
     applyNewTalentBranding();
     mountShellResize();
     log('new-talent theme applied');
@@ -1603,43 +1589,46 @@ function tnUIText(lang, key) {
   // Apply the glass shell class + default width there, and mount a JS bottom-right
   // resize handle (CSS resize:both proved unreliable live). Drag resizes width+height.
   function mountShellResize() {
+    // Resize grip lives on the REAL visible card (.bg-write). .bg (the Pinpin
+    // drag/move wrapper) is UNCHANGED — Pinpin owns its move behavior.
     var root = global.document.getElementById('addResume');
-    if (!root || !root.parentNode) return;
-    var shell = root.parentNode;
-    shell.classList.add('tn-shell');
-    // Default width only if the parent has no explicit/larger width yet.
-    var cur = shell.getBoundingClientRect ? shell.getBoundingClientRect().width : 0;
-    if (!shell.style.width && cur < 480) shell.style.width = '560px';
-    if (!shell.style.maxWidth) shell.style.maxWidth = '90vw';
-    // Remove any stale handle, then add one.
-    var old = shell.querySelector('.tn-resize');
+    if (!root) return;
+    var card = root.querySelector('.bg-write');
+    if (!card) return;
+    var w0 = card.getBoundingClientRect ? card.getBoundingClientRect().width : 0;
+    if (!card.style.getPropertyValue('width') && w0 < 480) {
+      card.style.setProperty('width', '560px', 'important');
+    }
+    if (!card.style.getPropertyValue('max-width')) card.style.setProperty('max-width', '90vw', 'important');
+    var old = card.querySelector('.tn-resize');
     if (old && old.parentNode) old.parentNode.removeChild(old);
     var grip = global.document.createElement('div');
     grip.className = 'tn-resize';
     grip.setAttribute('title', 'Drag to resize');
-    shell.appendChild(grip);
+    grip.style.cssText =
+      'position:absolute;right:3px;bottom:3px;width:16px;height:16px;' +
+      'cursor:nwse-resize;z-index:70;' +
+      'background:linear-gradient(135deg, transparent 50%, rgba(43,90,158,.6) 50%, rgba(43,90,158,.6) 62%, transparent 62%, transparent 74%, rgba(43,90,158,.6) 74%, rgba(43,90,158,.6) 86%, transparent 86%);';
+    card.appendChild(grip);
     grip.addEventListener('mousedown', function (e) {
       e.preventDefault();
       e.stopPropagation();
-      var startX = e.clientX, startY = e.clientY;
-      var w0 = shell.getBoundingClientRect().width;
-      var h0 = shell.getBoundingClientRect().height;
-      function onMove(ev) {
-        var w = Math.max(440, Math.min(window.innerWidth * 0.9, w0 + (ev.clientX - startX)));
-        var h = Math.max(420, Math.min(window.innerHeight * 0.92, h0 + (ev.clientY - startY)));
-        shell.style.width = w + 'px';
-        shell.style.height = h + 'px';
-        root.style.height = '100%';
+      var sx = e.clientX, sy = e.clientY;
+      var ww = card.getBoundingClientRect().width, hh = card.getBoundingClientRect().height;
+      function mv(ev) {
+        var w = Math.max(440, Math.min(window.innerWidth * 0.9, ww + (ev.clientX - sx)));
+        var h = Math.max(420, Math.min(window.innerHeight * 0.92, hh + (ev.clientY - sy)));
+        card.style.setProperty('width', w + 'px', 'important');
+        card.style.setProperty('height', h + 'px', 'important');
       }
-      function onUp() {
-        global.document.removeEventListener('mousemove', onMove);
-        global.document.removeEventListener('mouseup', onUp);
+      function up() {
+        global.document.removeEventListener('mousemove', mv);
+        global.document.removeEventListener('mouseup', up);
       }
-      global.document.addEventListener('mousemove', onMove);
-      global.document.addEventListener('mouseup', onUp);
+      global.document.addEventListener('mousemove', mv);
+      global.document.addEventListener('mouseup', up);
     });
-  }
-  function removeNewTalentTheme() {
+  }function removeNewTalentTheme() {
     var t = global.document.getElementById(TNAI_THEME_ID);
     if (t && t.parentNode) t.parentNode.removeChild(t);
     removeNewTalentBranding();
