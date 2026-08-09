@@ -1483,29 +1483,51 @@ function tnUIText(lang, key) {
     var style = global.document.createElement('style');
     style.id = TNAI_THEME_ID;
     style.textContent = [
-      // #addResume fills the real card (.bg-write). Width is owned by .bg-write and
-      // applied via inline !important in JS (Pinpin's later-loaded !important class
-      // rule beats this injected stylesheet, so class selectors cannot widen it).
+      // Host: just wrap the native Pinpin card. Do NOT force a wide layout
+      // (a forced width here was the root cause of the horizontal scrollbar).
       '#addResume{',
       '  box-sizing: border-box !important;',
-      '  width: 100% !important;',
+      '  width: auto !important;',
+      '  max-width: 92vw !important;',
       '  background: transparent !important;',
       '  border: 0 !important;',
       '  box-shadow: none !important;',
       '  margin: 0 !important;',
       '  padding: 0 !important;',
       '}',
-      // .bg-write is THE VISIBLE CARD. Glass is applied inline in JS; this rule is a
-      // transparent fallback so nothing opaque leaks before the inline override runs.
-      '#addResume .bg-write{ background: transparent !important; border: 0 !important; box-shadow: none !important; }',
-      // Native .can-drag title bar -> Talent Nexus navy/blue glass top bar.
+      // Pinpin move wrapper: keep transparent so the glass window reads as glass.
+      '#addResume .bg{ background: transparent !important; border: 0 !important; box-shadow: none !important; }',
+      // .bg-write = THE VISIBLE NEW TALENT WINDOW. Real glass material (restored
+      // from the old blue diagnostic window): translucent blue, frosted blur,
+      // subtle saturation, soft border, elegant shadow. Flex column guarantees
+      // Tag -> Note -> Status -> AI Fill -> Save stack in natural vertical flow
+      // (no overlap, no absolute Status). Width/height are owned here (and
+      // reinforced inline !important below to beat Pinpin's later class rule).
+      '#addResume .bg-write{',
+      '  box-sizing: border-box !important;',
+      '  display: flex !important;',
+      '  flex-direction: column !important;',
+      '  background: rgba(225, 241, 255, 0.72) !important;',
+      '  -webkit-backdrop-filter: blur(14px) saturate(120%) !important;',
+      '  backdrop-filter: blur(14px) saturate(120%) !important;',
+      '  border: 1px solid rgba(255, 255, 255, 0.55) !important;',
+      '  border-radius: 12px !important;',
+      '  box-shadow: 0 14px 44px rgba(20, 55, 90, 0.30), 0 2px 8px rgba(20, 55, 90, 0.18) !important;',
+      '  overflow-x: hidden !important;',
+      '  overflow-y: auto !important;',
+      '}',
+      // Native .can-drag title bar -> Talent Nexus navy glass top bar, STICKY so it
+      // stays visible while the form scrolls. Native Pinpin drag (on .bg) is kept.
       '#addResume .can-drag{',
+      '  position: sticky !important;',
+      '  top: 0 !important;',
+      '  z-index: 60 !important;',
       '  background: rgba(11, 42, 91, 0.92) !important;',
       '  -webkit-backdrop-filter: blur(14px) !important;',
       '  backdrop-filter: blur(14px) !important;',
       '  color: #eaf2ff !important;',
-      '  height: 34px !important;',
-      '  line-height: 34px !important;',
+      '  height: 36px !important;',
+      '  line-height: 36px !important;',
       '  font-size: 14px !important;',
       '  font-weight: 700 !important;',
       '  letter-spacing: .3px !important;',
@@ -1515,33 +1537,26 @@ function tnUIText(lang, key) {
       '  border-radius: 10px 10px 0 0 !important;',
       '  cursor: move !important;',
       '}',
-      // X close (native ng-click="close()") — keep, just restyle.
+      // Native X close (ng-click="close()") — keep, restyle for contrast.
       '#addResume .can-drag a{',
       '  color: #eaf2ff !important;',
-      '  font-size: 16px !important;',
-      '  line-height: 34px !important;',
-      '  width: 22px !important;',
+      '  font-size: 18px !important;',
+      '  line-height: 36px !important;',
+      '  width: 24px !important;',
       '  text-align: center !important;',
+      '  text-decoration: none !important;',
       '  cursor: pointer !important;',
       '}',
       '#addResume .can-drag a:hover{ color: #ffffff !important; }',
-      // Form fields — NATIVE-LIKE proportions. Single-line inputs/selects stay
-      // capped; the WIDER window = breathing room, not giant fields.
-      '#addResume input:not([type=checkbox]):not([type=radio]), #addResume select{',
-      '  max-width: 340px !important;',
-      '  background: rgba(255, 255, 255, 0.82) !important;',
-      '  border: 1px solid rgba(120, 170, 255, 0.45) !important;',
-      '  border-radius: 10px !important;',
-      '  color: #0b1b3a !important;',
-      '  padding: 8px 11px !important;',
-      '  font-size: 14px !important;',
-      '}',
-      '#addResume textarea{ width: 100% !important; max-width: 520px !important; min-height: 130px !important; resize: vertical !important; box-sizing: border-box !important; }',
+      // Native form controls keep their ORIGINAL Pinpin width/size. We removed the
+      // old TN field-width / border / radius / padding overrides — the extra outer
+      // width is breathing room, NOT wider inputs. Only a light focus ring for
+      // legibility on glass.
       '#addResume input:focus, #addResume textarea:focus, #addResume select:focus{',
-      '  border: 1px solid rgba(59, 130, 246, 0.95) !important;',
       '  outline: none !important;',
-      '  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18) !important;',
+      '  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.22) !important;',
       '}',
+      '#addResume textarea{ box-sizing: border-box !important; resize: vertical !important; }',
       '#addResume label, #addResume .section-title, #addResume h1, #addResume h2, #addResume h3{',
       '  color: #13386e !important;',
       '}',
@@ -1564,71 +1579,29 @@ function tnUIText(lang, key) {
     ].join('\n');
     (global.document.head || global.document.documentElement).appendChild(style);
     // Inline !important on the ACTUAL visible card (.bg-write) — beats Pinpin's
-    // later-loaded !important class rule (class specificity + load order lose).
+    // later-loaded !important class rule. BIG + TALL glass window; fields stay
+    // native width (breathing room comes from the wider frame, not wider inputs).
     var __card = root.querySelector('.bg-write');
     if (__card) {
       var __set = function (k, v) { __card.style.setProperty(k, v, 'important'); };
-      __set('width', '560px'); __set('max-width', '90vw'); __set('min-width', '440px');
-      __set('max-height', '92vh'); __set('min-height', '420px');
+      __set('width', '560px'); __set('max-width', '92vw'); __set('min-width', '440px');
+      __set('height', '86vh'); __set('max-height', '92vh'); __set('min-height', '460px');
       __set('box-sizing', 'border-box');
       __set('overflow-x', 'hidden'); __set('overflow-y', 'auto');
+      __set('display', 'flex'); __set('flex-direction', 'column');
       __set('background', 'rgba(225, 241, 255, 0.72)');
       __set('-webkit-backdrop-filter', 'blur(14px) saturate(120%)');
       __set('backdrop-filter', 'blur(14px) saturate(120%)');
       __set('border', '1px solid rgba(255, 255, 255, 0.55)');
-      __set('border-radius', '10px');
+      __set('border-radius', '12px');
       __set('box-shadow', '0 14px 44px rgba(20, 55, 90, 0.30), 0 2px 8px rgba(20, 55, 90, 0.18)');
       __set('position', 'relative');
-      __set('padding', '8px 14px 14px');
+      __set('padding', '10px 16px 16px');
     }
     applyNewTalentBranding();
-    mountShellResize();
     log('new-talent theme applied');
   }
-  // Real New Talent shell = #addResume's parent (Pinpin draggable moves t.parent()).
-  // Apply the glass shell class + default width there, and mount a JS bottom-right
-  // resize handle (CSS resize:both proved unreliable live). Drag resizes width+height.
-  function mountShellResize() {
-    // Resize grip lives on the REAL visible card (.bg-write). .bg (the Pinpin
-    // drag/move wrapper) is UNCHANGED — Pinpin owns its move behavior.
-    var root = global.document.getElementById('addResume');
-    if (!root) return;
-    var card = root.querySelector('.bg-write');
-    if (!card) return;
-    var w0 = card.getBoundingClientRect ? card.getBoundingClientRect().width : 0;
-    if (!card.style.getPropertyValue('width') && w0 < 480) {
-      card.style.setProperty('width', '560px', 'important');
-    }
-    if (!card.style.getPropertyValue('max-width')) card.style.setProperty('max-width', '90vw', 'important');
-    var old = card.querySelector('.tn-resize');
-    if (old && old.parentNode) old.parentNode.removeChild(old);
-    var grip = global.document.createElement('div');
-    grip.className = 'tn-resize';
-    grip.setAttribute('title', 'Drag to resize');
-    grip.style.cssText =
-      'position:absolute;right:3px;bottom:3px;width:16px;height:16px;' +
-      'cursor:nwse-resize;z-index:70;' +
-      'background:linear-gradient(135deg, transparent 50%, rgba(43,90,158,.6) 50%, rgba(43,90,158,.6) 62%, transparent 62%, transparent 74%, rgba(43,90,158,.6) 74%, rgba(43,90,158,.6) 86%, transparent 86%);';
-    card.appendChild(grip);
-    grip.addEventListener('mousedown', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      var sx = e.clientX, sy = e.clientY;
-      var ww = card.getBoundingClientRect().width, hh = card.getBoundingClientRect().height;
-      function mv(ev) {
-        var w = Math.max(440, Math.min(window.innerWidth * 0.9, ww + (ev.clientX - sx)));
-        var h = Math.max(420, Math.min(window.innerHeight * 0.92, hh + (ev.clientY - sy)));
-        card.style.setProperty('width', w + 'px', 'important');
-        card.style.setProperty('height', h + 'px', 'important');
-      }
-      function up() {
-        global.document.removeEventListener('mousemove', mv);
-        global.document.removeEventListener('mouseup', up);
-      }
-      global.document.addEventListener('mousemove', mv);
-      global.document.addEventListener('mouseup', up);
-    });
-  }function removeNewTalentTheme() {
+function removeNewTalentTheme() {
     var t = global.document.getElementById(TNAI_THEME_ID);
     if (t && t.parentNode) t.parentNode.removeChild(t);
     removeNewTalentBranding();
