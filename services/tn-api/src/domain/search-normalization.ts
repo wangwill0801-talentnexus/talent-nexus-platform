@@ -14,7 +14,7 @@ const ALIAS_GROUPS: readonly AliasGroup[] = [
     family: 'ee-hardware',
     aliases: [
       'EE', 'Electrical Engineer', 'Electronics Engineer', 'Electronic Engineer',
-      'Hardware Engineer', 'Hardware Design Engineer', 'Board-level EE',
+      'Hardware', 'Hardware Engineer', 'Hardware Design Engineer', 'Board-level EE',
       '電子工程師', '電機工程師', '硬體工程師', '硬體研發工程師',
       '硬體設計工程師', '電路設計工程師'
     ]
@@ -107,8 +107,26 @@ export function isRoleTerm(term: string): boolean {
 /** Match one requested criterion against one evidence surface. */
 export function matchesSearchTerm(haystack: string, term: string): boolean {
   const normalizedHaystack = normalizeSearchText(haystack);
-  if (!normalizedHaystack || !normalizeSearchText(term)) return false;
+  const normalizedTerm = normalizeSearchText(term);
+  if (!normalizedHaystack || !normalizedTerm) return false;
   const group = aliasGroupForTerm(term);
+  // A compound request such as "Qualcomm Hardware" or "WiFi Bluetooth EE"
+  // contains multiple independent signals. Match the role family and the
+  // remaining evidence terms instead of treating the whole phrase as one
+  // role alias. Common seniority modifiers are intentionally non-blocking.
+  if (normalizedTerm.includes(' ') && group) {
+    const matchedAlias = group.aliases
+      .filter((alias) => hasPhrase(normalizedTerm, alias))
+      .sort((a, b) => normalizeSearchText(b).length - normalizeSearchText(a).length)[0];
+    if (matchedAlias && normalizeSearchText(matchedAlias) !== normalizedTerm) {
+      const residue = normalizedTerm.replace(normalizeSearchText(matchedAlias), ' ').trim();
+      const modifiers = new Set(['senior', 'lead', 'principal', 'staff', 'junior', '資深', '主任', '高級']);
+      const residueTerms = residue.split(' ').filter((part) => part.length >= 2 && !modifiers.has(part));
+      const roleEvidence = group.aliases.some((alias) => hasPhrase(normalizedHaystack, alias));
+      return roleEvidence
+        && residueTerms.every((part) => matchesSearchTerm(normalizedHaystack, part));
+    }
+  }
   if (group?.family === 'wifi-bluetooth') {
     return group.aliases.some((alias) => hasPhrase(normalizedHaystack, alias));
   }
