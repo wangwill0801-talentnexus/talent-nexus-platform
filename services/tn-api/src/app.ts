@@ -10,6 +10,9 @@ import { candidateDataBrowserHtml } from './ui/candidate-data-browser.js';
 import { candidateIdentifierSchema, candidateListQuerySchema } from './validation/api.js';
 import { CandidateProcessingError, type CandidateProcessingService } from './services/candidate-processing-service.js';
 import { HistoricalEvidenceIntakeError, type HistoricalEvidenceIntakeService } from './services/historical-evidence-intake-service.js';
+import type { TalentSearchServiceContract } from './domain/talent-search.js';
+import { talentSearchRequestSchema } from './validation/talent-search.js';
+import type { CandidateIntelligenceServiceContract } from './services/candidate-intelligence-service.js';
 
 function authenticated(request: { headers: { authorization?: string } }, config: AppConfig): boolean {
   return request.headers.authorization === `Bearer ${config.apiToken}`;
@@ -21,6 +24,8 @@ export type AppDependencies = {
   dataBrowser?: CandidateDataBrowser;
   processing?: Pick<CandidateProcessingService,'enqueueByIdentifier'|'retryJob'|'runOne'>;
   evidenceIntake?: Pick<HistoricalEvidenceIntakeService, 'intake'>;
+  talentSearch?: TalentSearchServiceContract;
+  candidateIntelligence?: CandidateIntelligenceServiceContract;
 };
 
 export function buildApp(config: AppConfig, repository: CandidateRepository, sidecar?: PluginSidecarIntake, dependencies: AppDependencies = {}): FastifyInstance {
@@ -169,6 +174,32 @@ export function buildApp(config: AppConfig, repository: CandidateRepository, sid
     } catch {
       return reply.status(500).send({ error: { code: 'SIDECAR_INTERNAL_ERROR', message: 'Side-car intake could not be completed.' } });
     }
+  });
+
+  app.get('/api/v1/talent-search/coverage', async (request, reply) => {
+    if (!authenticated(request, config)) return reply.status(401).send({ error: { code: 'UNAUTHORIZED', message: 'Authentication is required.' } });
+    if (!dependencies.talentSearch) return reply.status(503).send({ error: { code: 'SEARCH_UNAVAILABLE', message: 'Talent Search is unavailable.' } });
+    return reply.send({ data: await dependencies.talentSearch.coverage() });
+  });
+
+  app.post('/api/v1/talent-search', async (request, reply) => {
+    if (!authenticated(request, config)) return reply.status(401).send({ error: { code: 'UNAUTHORIZED', message: 'Authentication is required.' } });
+    if (!dependencies.talentSearch) return reply.status(503).send({ error: { code: 'SEARCH_UNAVAILABLE', message: 'Talent Search is unavailable.' } });
+    const parsed = talentSearchRequestSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid structured search criteria.' } });
+    return reply.send({ data: await dependencies.talentSearch.search(parsed.data) });
+  });
+
+  app.get('/api/v1/candidate-intelligence/:identifier', async (request, reply) => {
+    if (!authenticated(request, config)) return reply.status(401).send({ error: { code: 'UNAUTHORIZED', message: 'Authentication is required.' } });
+    if (!dependencies.candidateIntelligence) return reply.status(503).send({ error: { code: 'CANDIDATE_INTELLIGENCE_UNAVAILABLE', message: 'Candidate Intelligence is unavailable.' } });
+    const identifier = String((request.params as { identifier?: string }).identifier ?? '').trim();
+    if (!/^\d{1,18}$/.test(identifier) && !/^TN\d{8,}$/.test(identifier) && !/^[0-9a-f-]{36}$/i.test(identifier)) {
+      return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid candidate identifier.' } });
+    }
+    const candidate = await dependencies.candidateIntelligence.get(identifier);
+    if (!candidate) return reply.status(404).send({ error: { code: 'CANDIDATE_NOT_FOUND', message: 'Candidate was not found.' } });
+    return reply.send({ data: candidate });
   });
 
   app.post('/internal/plugin-sidecar/v1/candidate-evidence', async (request, reply) => {

@@ -7,6 +7,8 @@ import { TargetedPinpinSidecarService } from './services/targeted-pinpin-sidecar
 import { CandidateDataBrowserService } from './services/candidate-data-browser-service.js';
 import { CandidateProcessingService } from './services/candidate-processing-service.js';
 import { HistoricalEvidenceIntakeService } from './services/historical-evidence-intake-service.js';
+import { TalentSearchService } from './services/talent-search-service.js';
+import { CandidateIntelligenceService } from './services/candidate-intelligence-service.js';
 
 if (process.env.TN_ENV === 'production') {
   try { process.loadEnvFile('E:\\TalentNexus\\config\\pinpin-source.env'); } catch (error) {
@@ -18,11 +20,14 @@ const config = loadConfig();
 const pool = createPool(config.databaseUrl);
 const internalSidecar = new PluginSidecarIntakeService(pool);
 const processing = new CandidateProcessingService(pool);
+const dataBrowser = new CandidateDataBrowserService(pool);
 const app = buildApp(config, new PostgresCandidateRepository(pool), internalSidecar, {
   publicSidecar: new TargetedPinpinSidecarService(pool, internalSidecar),
-  dataBrowser: new CandidateDataBrowserService(pool),
+  dataBrowser,
   processing,
-  evidenceIntake: new HistoricalEvidenceIntakeService(pool)
+  evidenceIntake: new HistoricalEvidenceIntakeService(pool),
+  talentSearch: new TalentSearchService(pool),
+  candidateIntelligence: new CandidateIntelligenceService(dataBrowser)
 });
 
 async function shutdown(signal: string): Promise<void> {
