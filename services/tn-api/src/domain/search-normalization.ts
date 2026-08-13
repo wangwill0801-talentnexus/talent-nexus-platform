@@ -54,6 +54,10 @@ const ALIAS_GROUPS: readonly AliasGroup[] = [
   {
     family: 'micron',
     aliases: ['Micron', 'Micron Technology', '美光']
+  },
+  {
+    family: 'qualcomm-platform',
+    aliases: ['Qualcomm', 'Qualcomm 8X09', 'Qualcomm 8X53', 'Qualcomm 8X96', '8X09', '8X53', '8X96']
   }
 ];
 
