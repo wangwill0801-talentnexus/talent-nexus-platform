@@ -83,3 +83,26 @@ test('internal processing controls are authenticated, bounded and never submit A
   assert.deepEqual(calls,['rebuild_projection','retry:0197a1f8-9876-7fef-9f5a-b70a0eed0002']);
   await app.close();
 });
+
+test('talent search and Candidate Intelligence routes keep the TN service token boundary', async () => {
+  const talentSearch = {
+    async coverage() { return { aiReady: 7 }; },
+    async search() { return { coverage: { aiReady: 7 }, results: [], scoreDefinition: 'recruiting_match_score' as const }; }
+  };
+  const candidateIntelligence = {
+    async get(identifier: string) { return identifier === '43222' ? { candidateId: 'controlled', atsCandidateId: '43222' } : null; }
+  };
+  const app = buildApp(config, repository, undefined, { talentSearch, candidateIntelligence });
+  const denied = await app.inject({ method: 'POST', url: '/api/v1/talent-search', payload: { criteria: {} } });
+  assert.equal(denied.statusCode, 401);
+  const headers = { authorization: `Bearer ${config.apiToken}` };
+  const coverage = await app.inject({ method: 'GET', url: '/api/v1/talent-search/coverage', headers });
+  assert.deepEqual(coverage.json(), { data: { aiReady: 7 } });
+  const search = await app.inject({ method: 'POST', url: '/api/v1/talent-search', headers, payload: { criteria: { intent: 'candidate_search', skills: ['Bluetooth'] } } });
+  assert.equal(search.statusCode, 200);
+  const candidate = await app.inject({ method: 'GET', url: '/api/v1/candidate-intelligence/43222', headers });
+  assert.equal(candidate.statusCode, 200);
+  const invalid = await app.inject({ method: 'GET', url: '/api/v1/candidate-intelligence/not-valid', headers });
+  assert.equal(invalid.statusCode, 400);
+  await app.close();
+});
