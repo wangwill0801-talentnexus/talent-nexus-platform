@@ -6,7 +6,7 @@ import type {
   TalentSearchResponse,
   TalentSearchServiceContract
 } from '../domain/talent-search.js';
-import { matchesEvidence, matchesSearchTerm, normalizeSearchText } from '../domain/search-normalization.js';
+import { isRoleTerm, matchesEvidence, matchesSearchTerm, normalizeSearchText } from '../domain/search-normalization.js';
 
 type SearchRow = {
   candidate_id: string;
@@ -76,6 +76,10 @@ function rank(row: SearchRow, criteria: TalentSearchCriteria): TalentSearchMatch
   const titleValues = unique([row.current_title ?? '', ...work.map((item) => text(item.jobTitle)), ...terms.filter((item) => item.type === 'target_role').map((item) => text(item.value))]);
   const companyValues = unique([row.current_company ?? '', ...work.map((item) => text(item.companyName))]);
   const skillValues = unique(terms.filter((item) => ['skill', 'certification', 'project', 'search_keyword'].includes(item.type ?? '')).map((item) => text(item.value)));
+  const technicalEvidenceValues = unique([
+    ...skillValues,
+    ...work.flatMap((item) => [text(item.jobTitle), text(item.department), text(item.description)])
+  ]);
   const languageValues = unique(terms.filter((item) => item.type === 'language').map((item) => text(item.value)));
   const educationValues = unique(education.flatMap((item) => [text(item.schoolName), text(item.degree), text(item.major)]));
   const functionValues = unique(work.flatMap((item) => [text(item.department), text(item.jobTitle)]));
@@ -88,6 +92,36 @@ function rank(row: SearchRow, criteria: TalentSearchCriteria): TalentSearchMatch
     ...educationValues
   ]).join(' | '));
 
+  // Recall and precision are separate stages. The SQL read model intentionally
+  // retrieves a broad pool; this gate prevents a secondary preference such as
+  // location from turning a candidate with no credible core function evidence
+  // into a meaningful result. Core requests come from the parsed role/function
+  // fields and role-like free-text terms, while the evidence surface includes
+  // historical titles and descriptions for transferable experience.
+  const freeTextRoleTerms = criteria.freeText
+    .split(/[\s,;|/()]+/)
+    .map((value) => value.trim())
+    .filter((value) => value.length >= 2 && isRoleTerm(value));
+  const coreRoleRequests = unique([
+    ...criteria.targetRoles,
+    ...criteria.titles,
+    ...criteria.functions,
+    ...criteria.mustHave,
+    ...criteria.keywords,
+    ...freeTextRoleTerms
+  ]).filter((value) => isRoleTerm(value));
+  const coreEvidence = normalize(unique([
+    ...titleValues,
+    ...functionValues,
+    ...skillValues,
+    ...termValues,
+    row.professional_summary ?? '',
+    row.recruiter_summary ?? '',
+    ...work.flatMap((item) => [text(item.jobTitle), text(item.department), text(item.description)])
+  ]).join(' | '));
+  const coreRoleMatched = coreRoleRequests.length === 0
+    || coreRoleRequests.some((requestedValue) => matchesSearchTerm(coreEvidence, requestedValue));
+
   const matched: string[] = [];
   const gaps: string[] = [];
   const explanationFacts: string[] = [];
@@ -99,9 +133,10 @@ function rank(row: SearchRow, criteria: TalentSearchCriteria): TalentSearchMatch
       possible += weight;
       const fieldText = normalize(fieldValues.join(' | '));
       const evidenceText = fieldText || searchable;
-      const matchedTerm = label === 'Must Have' || label === 'Nice to Have' || label.includes('?')
-        ? matchesEvidence(evidenceText, requestedValue)
-        : hasTerm(evidenceText, requestedValue);
+      // Use the same evidence-aware matcher for every group so aliases and
+      // compound requirements behave consistently across role, skill, company,
+      // and preference fields. This still never invents candidate facts.
+      const matchedTerm = matchesEvidence(evidenceText, requestedValue);
       if (matchedTerm) {
         points += weight;
         matched.push(`${label}: ${requestedValue}`);
@@ -114,14 +149,14 @@ function rank(row: SearchRow, criteria: TalentSearchCriteria): TalentSearchMatch
   };
 
   scoreGroup('Must Have', criteria.mustHave, [searchable], 18, true);
-  scoreGroup('技能', criteria.skills, skillValues, 11);
-  scoreGroup('職位', [...criteria.targetRoles, ...criteria.titles], titleValues, 12);
+  scoreGroup('技能', criteria.skills, technicalEvidenceValues, 11);
+  scoreGroup('職位', [...criteria.targetRoles, ...criteria.titles], titleValues, 24);
   scoreGroup('職能', criteria.functions, functionValues, 8);
   scoreGroup('產業', criteria.industries, industryValues, 6);
   scoreGroup('公司', criteria.companies, companyValues, 6);
-  scoreGroup('地點', criteria.locations, locationValues, 6);
-  scoreGroup('語言', criteria.languages, languageValues, 6);
-  scoreGroup('學歷', criteria.education, educationValues, 4);
+  scoreGroup('地點', criteria.locations, locationValues, 3);
+  scoreGroup('語言', criteria.languages, languageValues, 3);
+  scoreGroup('學歷', criteria.education, educationValues, 3);
   scoreGroup('Nice to Have', criteria.niceToHave, [searchable], 4, true);
   scoreGroup('關鍵字', criteria.keywords, [searchable], 3);
 
@@ -131,6 +166,7 @@ function rank(row: SearchRow, criteria: TalentSearchCriteria): TalentSearchMatch
   scoreGroup('關鍵字', fallbackTerms, [searchable], 3);
 
   if (criteria.excluded.some((item) => hasTerm(searchable, item))) return null;
+  if (!coreRoleMatched) return null;
   if (possible === 0 || points <= 0) return null;
 
   const evidenceStatus: TalentSearchMatch['evidenceStatus'] = evidence.some((item) => Boolean(item.contentSha256))

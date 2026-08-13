@@ -15,6 +15,8 @@ const ALIAS_GROUPS: readonly AliasGroup[] = [
     aliases: [
       'EE', 'Electrical Engineer', 'Electronics Engineer', 'Electronic Engineer',
       'Hardware', 'Hardware Engineer', 'Hardware Design Engineer', 'Board-level EE',
+      'Board Design', 'Circuit Design', 'Schematic', 'Layout Review', 'Bring-up',
+      'Hardware Line', 'ARM Hardware',
       '電子工程師', '電機工程師', '硬體工程師', '硬體研發工程師',
       '硬體設計工程師', '電路設計工程師'
     ]
@@ -40,6 +42,10 @@ const ALIAS_GROUPS: readonly AliasGroup[] = [
     aliases: ['ERP', 'ERP Engineer', 'ERP Consultant', 'ERP 系統工程師']
   },
   {
+    family: 'supply-chain',
+    aliases: ['Supply Chain', 'SCM', 'Buyer', 'Procurement', 'Purchasing', 'Planner', 'Material Control', 'Sourcing', '採購', '供應鏈', '物料管理']
+  },
+  {
     family: 'wifi-bluetooth',
     aliases: ['WiFi Bluetooth', 'WIFI-BT']
   },
@@ -61,7 +67,7 @@ const ALIAS_GROUPS: readonly AliasGroup[] = [
   }
 ];
 
-const ROLE_FAMILIES = new Set(['ee-hardware', 'rf', 'firmware', 'project-program', 'sales', 'erp']);
+const ROLE_FAMILIES = new Set(['ee-hardware', 'rf', 'firmware', 'project-program', 'sales', 'erp', 'supply-chain']);
 
 export function normalizeSearchText(value: string): string {
   return value

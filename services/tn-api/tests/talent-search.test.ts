@@ -40,6 +40,22 @@ const goldenCandidate = {
   ]
 };
 
+const unrelatedHrCandidate = {
+  ...candidate,
+  candidate_code: 'TN00000999', display_name: 'Alexa Huang', ats_candidate_id: '43222',
+  current_company: 'Independent HR Consultant', current_title: 'HRBP', location_text: '新北',
+  professional_summary: 'Human resources business partner and talent acquisition consultant.',
+  recruiter_summary: 'HR / recruiting / vendor management background.',
+  work: [
+    { companyName: 'Independent HR Consultant', jobTitle: 'HRBP', location: '新北', description: 'Talent acquisition, HR consulting, vendor management and global sourcing.' },
+    { companyName: 'Self-Employed', jobTitle: 'Talent Acquisition Consultant', location: '新北', description: 'Recruiting and people operations.' }
+  ],
+  terms: [
+    { type: 'skill', value: 'Vendor Management', provenance: 'source_explicit' },
+    { type: 'target_role', value: 'HRBP', provenance: 'ai_normalized' }
+  ]
+};
+
 function goldenCriteria(query: string): TalentSearchCriteria {
   return { ...criteria, targetRoles: [], titles: [], skills: [], mustHave: [], niceToHave: [], keywords: [query], freeText: query, locations: [] };
 }
@@ -51,6 +67,16 @@ test('golden role recall uses historical titles and work evidence without hardco
     assert.equal(result?.atsCandidateId, '43213');
   }
   assert.equal(rankCandidateForSearch(goldenCandidate, goldenCriteria('RF Matching')), null);
+});
+
+test('core role eligibility prevents a location match from rescuing an unrelated candidate', () => {
+  const locationCriteria = goldenCriteria('EE');
+  locationCriteria.locations = ['台北', '新北'];
+  const positive = rankCandidateForSearch(goldenCandidate, { ...locationCriteria, locations: ['新北'] });
+  const negative = rankCandidateForSearch(unrelatedHrCandidate, locationCriteria);
+  assert.ok(positive);
+  assert.equal(positive?.atsCandidateId, '43213');
+  assert.equal(negative, null);
 });
 
 test('deterministic ranking rewards evidence-backed criteria and exposes gaps without inventing facts', () => {
