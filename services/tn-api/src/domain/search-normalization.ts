@@ -57,7 +57,7 @@ const ALIAS_GROUPS: readonly AliasGroup[] = [
   },
   {
     family: 'qualcomm-platform',
-    aliases: ['Qualcomm', 'Qualcomm 8X09', 'Qualcomm 8X53', 'Qualcomm 8X96', '8X09', '8X53', '8X96']
+    aliases: ['Qualcomm', '高通', 'Qualcomm 8X09', 'Qualcomm 8X53', 'Qualcomm 8X96', '8X09', '8X53', '8X96']
   }
 ];
 
