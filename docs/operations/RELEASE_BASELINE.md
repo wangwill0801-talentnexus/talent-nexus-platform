@@ -61,9 +61,10 @@ known follow-up and is not required to build the TN backend processing layer.
 ## Remote and off-machine status — 2026-08-13
 
 - Active source branch: `codex/tn-evidence-processing-foundation`.
-- Evidence/processing foundation report commit: `086059a`; subsequent pilot scripts and report are focused commits on the same branch.
-- The root repository still has no Git remote.
-- GitHub CLI is authenticated to `wangwill0801-talentnexus`, but the accessible repository list contains no repository that can be proven to own this root TN backend/docs source. In particular, `talent-nexus-ai-api` belongs to the separate Netlify backend and must not receive this history.
-- No remote was invented, no repository was created and no force/history rewrite was attempted.
-- `REMOTE_SETUP_REQUIRED`: an explicit repository owner/name is required before the root branch can be pushed off-machine.
+- Evidence/processing foundation report commit after the approved history cleanup: `e6ee1fa`; historical pilot report commit: `45b1ac3`.
+- Root remote: `https://github.com/wangwill0801-talentnexus/talent-nexus-platform.git`.
+- The active branch was pushed successfully without force to the dedicated `talent-nexus-platform` repository.
+- A tracked private-key artifact at `dist/talent-nexus-104-poc.pem` was removed from every rewritten commit before the first GitHub push. The rewritten history was scanned for private-key markers, common GitHub/Google token patterns and suspicious credential filenames with zero findings.
+- A verified full pre-clean bundle and the quarantined key remain only under the ACL-restricted local path `C:\TN-Secrets\git-history-backups\talent-nexus-platform-20260813_182503`; this backup must never be uploaded or distributed.
+- Existing dirty/untracked Connector, Netlify and distribution work was preserved byte-for-byte at the tracked-diff level during the metadata replacement.
 - Production has the deployed runtime and native PostgreSQL backups, but these are not a substitute for an off-machine source repository.

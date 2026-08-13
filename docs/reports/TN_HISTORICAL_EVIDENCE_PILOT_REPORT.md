@@ -11,14 +11,14 @@ The pipeline, identity safeguards, queue/worker, snapshot preservation, replay a
 ## Release baseline
 
 - Branch: `codex/tn-evidence-processing-foundation`
-- Starting verified report commit: `086059a`
-- Root remote: none
+- Starting verified report commit after approved history cleanup: `e6ee1fa`
+- Root remote: `https://github.com/wangwill0801-talentnexus/talent-nexus-platform.git`
 - GitHub authentication: available for `wangwill0801-talentnexus`
-- Suitable existing root-source repository: not identified
-- Push: not performed
-- Status: `REMOTE_SETUP_REQUIRED`
+- Dedicated root-source repository: verified
+- Push: active branch published without force
+- Status: `REMOTE_BACKUP_PASS`
 
-The accessible `talent-nexus-ai-api` repository is owned by the separate Netlify backend, so it was not reused for TN API/docs history. Connector, Netlify and dist dirty/untracked work remains untouched. No blanket `git add .` was used.
+The separate `talent-nexus-ai-api` repository was not reused for TN API/docs history. Before the first push, the approved security cleanup removed `dist/talent-nexus-104-poc.pem` from every historical commit and quarantined the local file under an ACL-restricted backup path. The rewritten history scan returned no private-key, common token-pattern or suspicious credential-file findings. Connector, Netlify and dist dirty/untracked work remains untouched. No blanket `git add .` was used.
 
 ## Pilot selection
 
