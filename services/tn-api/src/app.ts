@@ -3,11 +3,13 @@ import { EntraAccessTokenError, MicrosoftEntraAccessTokenVerifier, type EntraAcc
 import type { AppConfig } from './config/env.js';
 import type { CandidateRepository } from './domain/candidate.js';
 import { pluginSidecarIntakeV1Schema } from './domain/plugin-sidecar-intake.js';
+import { candidateEvidenceIntakeV1Schema } from './domain/evidence-intake.js';
 import { PluginSidecarIntakeError, type PluginSidecarIntake } from './services/plugin-sidecar-intake-service.js';
 import type { CandidateDataBrowser } from './services/candidate-data-browser-service.js';
 import { candidateDataBrowserHtml } from './ui/candidate-data-browser.js';
 import { candidateIdentifierSchema, candidateListQuerySchema } from './validation/api.js';
 import { CandidateProcessingError, type CandidateProcessingService } from './services/candidate-processing-service.js';
+import { HistoricalEvidenceIntakeError, type HistoricalEvidenceIntakeService } from './services/historical-evidence-intake-service.js';
 
 function authenticated(request: { headers: { authorization?: string } }, config: AppConfig): boolean {
   return request.headers.authorization === `Bearer ${config.apiToken}`;
@@ -18,6 +20,7 @@ export type AppDependencies = {
   publicSidecar?: PluginSidecarIntake;
   dataBrowser?: CandidateDataBrowser;
   processing?: Pick<CandidateProcessingService,'enqueueByIdentifier'|'retryJob'|'runOne'>;
+  evidenceIntake?: Pick<HistoricalEvidenceIntakeService, 'intake'>;
 };
 
 export function buildApp(config: AppConfig, repository: CandidateRepository, sidecar?: PluginSidecarIntake, dependencies: AppDependencies = {}): FastifyInstance {
@@ -61,6 +64,23 @@ export function buildApp(config: AppConfig, repository: CandidateRepository, sid
       }
       request.log.error({ requestId: request.id, route: request.routeOptions.url, errorName: error instanceof Error ? error.name : 'UnknownError' }, 'side-car intake failed');
       return reply.status(500).send({ error: { code: 'SIDECAR_INTERNAL_ERROR', message: 'Side-car intake could not be completed.' } });
+    }
+  }
+
+  async function intakeEvidence(request: FastifyRequest, reply: FastifyReply) {
+    if (!dependencies.evidenceIntake) return reply.status(503).send({ error: { code: 'EVIDENCE_INTAKE_UNAVAILABLE', message: 'Evidence intake is unavailable.' } });
+    const parsed = candidateEvidenceIntakeV1Schema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: { code: 'EVIDENCE_INVALID_PAYLOAD', message: 'Invalid evidence intake payload.' } });
+    try {
+      const result = await dependencies.evidenceIntake.intake(parsed.data);
+      return reply.status(result.status === 'created' ? 201 : 200).send({ data: result });
+    } catch (error) {
+      if (error instanceof HistoricalEvidenceIntakeError) {
+        request.log.warn({ requestId: request.id, route: request.routeOptions.url, errorCode: error.code }, 'evidence intake rejected');
+        const status = error.code === 'EVIDENCE_CANDIDATE_NOT_FOUND' ? 404 : error.code === 'EVIDENCE_IDENTITY_CONFLICT' ? 409 : 400;
+        return reply.status(status).send({ error: { code: error.code, message: 'Evidence could not be safely accepted.' } });
+      }
+      throw error;
     }
   }
 
@@ -151,6 +171,11 @@ export function buildApp(config: AppConfig, repository: CandidateRepository, sid
     }
   });
 
+  app.post('/internal/plugin-sidecar/v1/candidate-evidence', async (request, reply) => {
+    if (!authenticated(request, config)) return reply.status(401).send({ error: { code: 'UNAUTHORIZED', message: 'Authentication is required.' } });
+    return intakeEvidence(request, reply);
+  });
+
   app.post('/api/v1/plugin-sidecar/candidate-enrichment', async (request, reply) => {
     if (!entraVerifier) return reply.status(503).send({ error: { code: 'ENTRA_AUTH_UNAVAILABLE', message: 'Entra authentication is unavailable.' } });
     try {
@@ -163,6 +188,20 @@ export function buildApp(config: AppConfig, repository: CandidateRepository, sid
       return reply.status(401).send({ error: { code: 'ENTRA_AUTH_INVALID', message: 'Valid Entra authentication is required.' } });
     }
     return intakeSidecar(request, reply, dependencies.publicSidecar ?? sidecar, true);
+  });
+
+  app.post('/api/v1/plugin-sidecar/candidate-evidence', async (request, reply) => {
+    if (!entraVerifier) return reply.status(503).send({ error: { code: 'ENTRA_AUTH_UNAVAILABLE', message: 'Entra authentication is unavailable.' } });
+    try {
+      await entraVerifier.verify(request.headers.authorization);
+    } catch (error) {
+      if (error instanceof EntraAccessTokenError) {
+        const message = error.statusCode === 403 ? 'Required delegated scope is missing.' : 'Valid Entra authentication is required.';
+        return reply.status(error.statusCode).send({ error: { code: error.code, message } });
+      }
+      return reply.status(401).send({ error: { code: 'ENTRA_AUTH_INVALID', message: 'Valid Entra authentication is required.' } });
+    }
+    return intakeEvidence(request, reply);
   });
 
   return app;

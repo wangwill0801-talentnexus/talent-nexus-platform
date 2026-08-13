@@ -77,6 +77,19 @@ function payload() {
   return { contractVersion: 'plugin_sidecar_intake_v1', candidateRef: { sourceSystem: 'pinpin', sourceInstance: 'pinpin-prod', externalCandidateId: '43184' }, source: { sourceKind: 'pdf', sourceSystem: 'synthetic-plugin', sourceReference: 'entra-test', sourceUrl: 'https://example.invalid/synthetic', sourceCapturedAt: '2026-08-12T00:00:00.000Z' }, plugin: { version: 'test-plugin' }, ai: { provider: null, model: null }, correlationId: 'entra-run', resume: { schemaVersion: 'standard_resume_v1', summary: 'Synthetic only' } };
 }
 
+function evidencePayload() {
+  return {
+    contractVersion: 'candidate_evidence_intake_v1',
+    candidateRef: { sourceSystem: 'pinpin', sourceInstance: 'pinpin-prod', externalCandidateId: '43184' },
+    source: { sourceKind: 'linkedin_public', sourceSystem: 'linkedin', sourceReference: null, sourceUrl: 'https://www.linkedin.com/in/controlled-profile/?trk=test', sourceCapturedAt: '2026-08-13T00:00:00.000Z' },
+    capture: { method: 'connector_visible_page', connectorVersion: '5000.0.116-test', extractorVersion: 'linkedin-visible-v1', normalizationVersion: 'tn-text-nfkc-v1' },
+    representation: { kind: 'connector_text', text: 'Controlled evidence content' },
+    ai: {},
+    correlationId: 'evidence-entra-run',
+    resume: { schemaVersion: 'standard_resume_v1', summary: 'Synthetic only' }
+  };
+}
+
 test('public Entra route authenticates before side-car intake and remains PII-safe on auth failure', async () => {
   let calls = 0;
   const sidecar = { async intake() { calls += 1; return { status: 'created', candidateId: 'candidate-uuid', snapshot: { id: 'snapshot-uuid', schemaVersion: 'plugin_sidecar_intake_v1', correlationId: 'entra-run' } }; } } as unknown as PluginSidecarIntake;
@@ -100,5 +113,19 @@ test('public Entra route rejects internal TN bearer while internal route preserv
   const internal = await app.inject({ method: 'POST', url: '/internal/plugin-sidecar/v1/candidate-enrichment', headers: { authorization: `Bearer ${config.apiToken}` }, payload: payload() });
   assert.equal(internal.statusCode, 201);
   assert.equal(calls, 1);
+  await app.close();
+});
+
+test('public evidence route enforces Entra before accepting a sanitized evidence envelope', async () => {
+  let calls = 0;
+  const evidenceIntake = { async intake() { calls += 1; return { status: 'created' as const, candidateId: 'candidate-uuid', evidenceId: 'evidence-uuid', contentSha256: 'a'.repeat(64), snapshotId: 'snapshot-uuid', processingStatus: 'completed' as const }; } };
+  const app = buildApp(config, repository, undefined, { entraVerifier: verifier(), evidenceIntake });
+  const denied = await app.inject({ method: 'POST', url: '/api/v1/plugin-sidecar/candidate-evidence', payload: evidencePayload() });
+  assert.equal(denied.statusCode, 401);
+  assert.equal(calls, 0);
+  const allowed = await app.inject({ method: 'POST', url: '/api/v1/plugin-sidecar/candidate-evidence', headers: { authorization: `Bearer ${await token()}` }, payload: evidencePayload() });
+  assert.equal(allowed.statusCode, 201);
+  assert.equal(calls, 1);
+  assert.equal(allowed.body.includes('Controlled evidence content'), false);
   await app.close();
 });

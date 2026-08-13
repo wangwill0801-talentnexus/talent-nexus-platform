@@ -19,23 +19,27 @@ function job(row: JobRow): ProcessingJob { return { id:String(row.id),candidateI
 function safeCode(value: string): string { return /^[A-Z0-9_]{1,64}$/.test(value) ? value : 'PROCESSING_ERROR'; }
 function safeSummary(value?: string): string | null { if (!value) return null; return value.replace(/[\r\n\t]+/g,' ').slice(0,240); }
 
+export async function persistSnapshotProjection(client: DatabaseClient, candidateId: string, snapshotId: string): Promise<void> {
+    await client.query('DELETE FROM candidate_ai_terms WHERE enrichment_snapshot_id=$1',[snapshotId]);
+    await client.query('DELETE FROM candidate_ai_work_experiences WHERE enrichment_snapshot_id=$1',[snapshotId]);
+    await client.query('DELETE FROM candidate_ai_educations WHERE enrichment_snapshot_id=$1',[snapshotId]);
+    await client.query('DELETE FROM candidate_ai_profiles WHERE enrichment_snapshot_id=$1',[snapshotId]);
+    await client.query(`INSERT INTO candidate_ai_profiles (id,candidate_id,enrichment_snapshot_id,professional_summary,recruiter_summary,job_preferences) SELECT $1,$2,s.id,s.payload->>'summary',s.payload->>'recruiterSummary',s.payload->>'jobPreferences' FROM candidate_enrichment_snapshots s WHERE s.id=$3`,[uuidv7(),candidateId,snapshotId]);
+    const payload = await client.query<{ payload: Record<string,unknown> }>('SELECT payload FROM candidate_enrichment_snapshots WHERE id=$1',[snapshotId]);
+    const data=payload.rows[0]?.payload ?? {};
+    for(const [index,item] of (Array.isArray(data.experience)?data.experience:[]).entries()){ const w=item as Record<string,unknown>; await client.query(`INSERT INTO candidate_ai_work_experiences (id,candidate_id,enrichment_snapshot_id,display_order,company_name,job_title,department,location_text,start_date_raw,end_date_raw,is_current,description) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,[uuidv7(),candidateId,snapshotId,index,w.company??null,w.title??null,w.department??null,w.location??null,w.startDate??null,w.endDate??null,w.isCurrent??null,w.description??null]); }
+    for(const [index,item] of (Array.isArray(data.education)?data.education:[]).entries()){ const e=item as Record<string,unknown>; await client.query(`INSERT INTO candidate_ai_educations (id,candidate_id,enrichment_snapshot_id,display_order,school_name,degree_raw,major_raw,start_date_raw,end_date_raw) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[uuidv7(),candidateId,snapshotId,index,e.school??null,e.degree??null,e.major??null,e.startDate??null,e.endDate??null]); }
+    const groups: Array<[string,unknown]>=[['skill',data.skills],['language',[...(Array.isArray(data.languages)?data.languages:[]),...(Array.isArray(data.languageDetails)?data.languageDetails:[])]],['certification',data.certifications],['project',data.projectExperience],['target_role',data.targetRoles],['search_keyword',data.coreKeywords]];
+    for(const [type,values] of groups){ for(const [index,value] of (Array.isArray(values)?values:[]).entries()){ if(typeof value==='string'&&value.trim()) await client.query('INSERT INTO candidate_ai_terms (id,candidate_id,enrichment_snapshot_id,term_type,display_order,value) VALUES ($1,$2,$3,$4,$5,$6)',[uuidv7(),candidateId,snapshotId,type,index,value]); } }
+}
+
 export class ProjectionRebuildExecutor implements ProcessingJobExecutor {
   async execute(current: ProcessingJob, client: DatabaseClient): Promise<ProcessingOutcome> {
     if (current.operation !== 'rebuild_projection') return { status:'needs_review', errorCode:'PROCESSOR_NOT_CONFIGURED', errorSummary:'No approved evidence processor is configured for this operation.' };
     const snapshot = await client.query<{ id:string }>('SELECT id FROM candidate_enrichment_snapshots WHERE candidate_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[current.candidateId]);
     if (!snapshot.rows[0]) return { status:'needs_review', errorCode:'SNAPSHOT_NOT_FOUND' };
     const snapshotId=snapshot.rows[0].id;
-    await client.query('DELETE FROM candidate_ai_terms WHERE enrichment_snapshot_id=$1',[snapshotId]);
-    await client.query('DELETE FROM candidate_ai_work_experiences WHERE enrichment_snapshot_id=$1',[snapshotId]);
-    await client.query('DELETE FROM candidate_ai_educations WHERE enrichment_snapshot_id=$1',[snapshotId]);
-    await client.query('DELETE FROM candidate_ai_profiles WHERE enrichment_snapshot_id=$1',[snapshotId]);
-    await client.query(`INSERT INTO candidate_ai_profiles (id,candidate_id,enrichment_snapshot_id,professional_summary,recruiter_summary,job_preferences) SELECT $1,$2,s.id,s.payload->>'summary',s.payload->>'recruiterSummary',s.payload->>'jobPreferences' FROM candidate_enrichment_snapshots s WHERE s.id=$3`,[uuidv7(),current.candidateId,snapshotId]);
-    const payload = await client.query<{ payload: Record<string,unknown> }>('SELECT payload FROM candidate_enrichment_snapshots WHERE id=$1',[snapshotId]);
-    const data=payload.rows[0]?.payload ?? {};
-    for(const [index,item] of (Array.isArray(data.experience)?data.experience:[]).entries()){ const w=item as Record<string,unknown>; await client.query(`INSERT INTO candidate_ai_work_experiences (id,candidate_id,enrichment_snapshot_id,display_order,company_name,job_title,department,location_text,start_date_raw,end_date_raw,is_current,description) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,[uuidv7(),current.candidateId,snapshotId,index,w.company??null,w.title??null,w.department??null,w.location??null,w.startDate??null,w.endDate??null,w.isCurrent??null,w.description??null]); }
-    for(const [index,item] of (Array.isArray(data.education)?data.education:[]).entries()){ const e=item as Record<string,unknown>; await client.query(`INSERT INTO candidate_ai_educations (id,candidate_id,enrichment_snapshot_id,display_order,school_name,degree_raw,major_raw,start_date_raw,end_date_raw) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[uuidv7(),current.candidateId,snapshotId,index,e.school??null,e.degree??null,e.major??null,e.startDate??null,e.endDate??null]); }
-    const groups: Array<[string,unknown]>=[['skill',data.skills],['language',[...(Array.isArray(data.languages)?data.languages:[]),...(Array.isArray(data.languageDetails)?data.languageDetails:[])]],['certification',data.certifications],['project',data.projectExperience],['target_role',data.targetRoles],['search_keyword',data.coreKeywords]];
-    for(const [type,values] of groups){ for(const [index,value] of (Array.isArray(values)?values:[]).entries()){ if(typeof value==='string'&&value.trim()) await client.query('INSERT INTO candidate_ai_terms (id,candidate_id,enrichment_snapshot_id,term_type,display_order,value) VALUES ($1,$2,$3,$4,$5,$6)',[uuidv7(),current.candidateId,snapshotId,type,index,value]); } }
+    await persistSnapshotProjection(client,current.candidateId,snapshotId);
     return { status:'completed', snapshotId };
   }
 }
