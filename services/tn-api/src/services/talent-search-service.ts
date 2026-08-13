@@ -6,6 +6,7 @@ import type {
   TalentSearchResponse,
   TalentSearchServiceContract
 } from '../domain/talent-search.js';
+import { matchesEvidence, matchesSearchTerm, normalizeSearchText } from '../domain/search-normalization.js';
 
 type SearchRow = {
   candidate_id: string;
@@ -46,7 +47,7 @@ function text(value: unknown): string {
 }
 
 function normalize(value: string): string {
-  return value.normalize('NFKC').toLocaleLowerCase('en-US').replace(/[\s_\-/]+/g, ' ').trim();
+  return normalizeSearchText(value);
 }
 
 function unique(values: string[]): string[] {
@@ -54,8 +55,7 @@ function unique(values: string[]): string[] {
 }
 
 function hasTerm(haystack: string, term: string): boolean {
-  const needle = normalize(term);
-  return Boolean(needle) && haystack.includes(needle);
+  return matchesSearchTerm(haystack, term);
 }
 
 function iso(value: Date | string | null): string | null {
@@ -98,7 +98,11 @@ function rank(row: SearchRow, criteria: TalentSearchCriteria): TalentSearchMatch
     for (const requestedValue of unique(requested)) {
       possible += weight;
       const fieldText = normalize(fieldValues.join(' | '));
-      if (hasTerm(fieldText || searchable, requestedValue)) {
+      const evidenceText = fieldText || searchable;
+      const matchedTerm = label === 'Must Have' || label === 'Nice to Have' || label.includes('?')
+        ? matchesEvidence(evidenceText, requestedValue)
+        : hasTerm(evidenceText, requestedValue);
+      if (matchedTerm) {
         points += weight;
         matched.push(`${label}: ${requestedValue}`);
         explanationFacts.push(`${requestedValue} (${label})`);
