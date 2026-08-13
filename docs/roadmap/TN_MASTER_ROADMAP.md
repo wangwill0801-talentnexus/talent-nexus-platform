@@ -7,9 +7,11 @@
 
 ## Next gate
 
-Historical processing backfill begins with read-only eligibility and a separately approved 5-10 candidate pilot. No uncontrolled full-population run.
+Historical Evidence Pilot is `CURRENT / PARTIAL`: 10 candidates were safely classified, 2 source-referenced profiles completed projection replay, and 8 remained fail-closed because evidence was absent or untraceable. No uncontrolled full-population run.
 
-After backfill validation, build recruiter-facing Talent Search and Candidate 360 on the verified foundation.
+Next, capture deterministic evidence fingerprints for a controlled 5-10 cohort and repeat the pilot. A 20-50 batch remains unapproved.
+
+After coverage and evidence validation, build recruiter-facing Talent Search and Candidate 360 on the verified foundation.
 
 ## Deferred
 

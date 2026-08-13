@@ -57,3 +57,13 @@ known follow-up and is not required to build the TN backend processing layer.
 - No name/email/phone automatic merge.
 - No secret in source, history, logs or reports.
 - No DNS, IIS, Entra or firewall change without an explicit gate.
+
+## Remote and off-machine status — 2026-08-13
+
+- Active source branch: `codex/tn-evidence-processing-foundation`.
+- Evidence/processing foundation report commit: `086059a`; subsequent pilot scripts and report are focused commits on the same branch.
+- The root repository still has no Git remote.
+- GitHub CLI is authenticated to `wangwill0801-talentnexus`, but the accessible repository list contains no repository that can be proven to own this root TN backend/docs source. In particular, `talent-nexus-ai-api` belongs to the separate Netlify backend and must not receive this history.
+- No remote was invented, no repository was created and no force/history rewrite was attempted.
+- `REMOTE_SETUP_REQUIRED`: an explicit repository owner/name is required before the root branch can be pushed off-machine.
+- Production has the deployed runtime and native PostgreSQL backups, but these are not a substitute for an off-machine source repository.
