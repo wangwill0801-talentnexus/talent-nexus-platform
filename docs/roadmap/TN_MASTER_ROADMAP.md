@@ -1,20 +1,22 @@
 # Talent Nexus Master Roadmap
 
-## Current build — Candidate Intake Foundation
+## Completed
 
-Production foundation is `PASS`. Migration 003, TN API, Candidate Data Browser, controlled existing-candidate replay and fresh Connector → ATS Save → TN intake candidate 43219 are verified in production.
+- Candidate Intake Foundation: identity, scoped Pinpin reference, ATS baseline, immutable Connector enrichment snapshot, projections and production E2E.
+- Candidate Evidence & AI Processing Foundation: evidence/extraction contract, PostgreSQL job queue, low-concurrency worker, retries, idempotency, projection rebuild and internal diagnostics.
 
-## Next — Talent Search / Candidate 360
+## Next gate
 
-First build the Candidate Evidence & AI Processing Foundation: controlled original-evidence references, processing queue and VPS worker boundary for deterministic extraction, structured AI parsing, normalization and safe reprocessing. The Connector must not become the long-running AI host.
+Historical processing backfill begins with read-only eligibility and a separately approved 5-10 candidate pilot. No uncontrolled full-population run.
 
-Then build recruiter-facing Talent Search and Candidate 360 on the verified candidate foundation. Search may use name, current/past company and title, skill, keyword and target role. Vector redesign and matching are separate decisions.
+After backfill validation, build recruiter-facing Talent Search and Candidate 360 on the verified foundation.
 
 ## Deferred
 
-- Job and Company TN databases
-- Candidate-to-job matching and ranking
-- Native ATS workflow replacement
+- Embedding/vector/reranking rollout
+- JD matching
+- Job and Company TN persistence
+- Native ATS replacement
 - Original resume binary archive
-- Client portal and outcome intelligence
-- Broad historical AI projection backfill
+- Client portal, compensation and outcome intelligence
+- Netlify parser shutdown or production AI-provider cutover

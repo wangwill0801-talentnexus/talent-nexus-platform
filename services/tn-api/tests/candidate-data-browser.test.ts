@@ -33,7 +33,9 @@ test('data browser resolves consultant-facing ATS ID and separates baseline, AI,
   assert.equal((result?.atsBaseline as Record<string, unknown>).workCount, 1);
   assert.equal(((result?.aiProfile as Record<string, unknown>).work as unknown[]).length, 2);
   assert.deepEqual(result?.warnings, ['AI_WORK_RICHER_THAN_ATS', 'AI_EDUCATION_RICHER_THAN_ATS', 'SOURCE_NOT_HASHED']);
-  assert.equal((result?.processing as Record<string, unknown>).status, 'completed');
+  assert.equal(((result?.processing as Record<string, unknown>).current as Record<string, unknown>).status, 'completed');
+  assert.equal(((result?.processing as Record<string, unknown>).jobs as unknown[]).length, 1);
+  assert.equal(((result?.evidence as Record<string, unknown>).current as unknown[]).length, 1);
   assert.ok((result?.rawAiSnapshot as Record<string, unknown>).payload);
   assert.equal(await new CandidateDataBrowserService(pool).inspect('does-not-exist'), null);
   await pool.end();

@@ -7,6 +7,7 @@ import { PluginSidecarIntakeError, type PluginSidecarIntake } from './services/p
 import type { CandidateDataBrowser } from './services/candidate-data-browser-service.js';
 import { candidateDataBrowserHtml } from './ui/candidate-data-browser.js';
 import { candidateIdentifierSchema, candidateListQuerySchema } from './validation/api.js';
+import { CandidateProcessingError, type CandidateProcessingService } from './services/candidate-processing-service.js';
 
 function authenticated(request: { headers: { authorization?: string } }, config: AppConfig): boolean {
   return request.headers.authorization === `Bearer ${config.apiToken}`;
@@ -16,6 +17,7 @@ export type AppDependencies = {
   entraVerifier?: EntraAccessTokenVerifier;
   publicSidecar?: PluginSidecarIntake;
   dataBrowser?: CandidateDataBrowser;
+  processing?: Pick<CandidateProcessingService,'enqueueByIdentifier'|'retryJob'|'runOne'>;
 };
 
 export function buildApp(config: AppConfig, repository: CandidateRepository, sidecar?: PluginSidecarIntake, dependencies: AppDependencies = {}): FastifyInstance {
@@ -119,6 +121,25 @@ export function buildApp(config: AppConfig, repository: CandidateRepository, sid
     const result = await dependencies.dataBrowser.inspect(identifier);
     if (!result) return reply.status(404).send({ error: { code: 'CANDIDATE_NOT_FOUND', message: 'Candidate was not found or identity was ambiguous.' } });
     return reply.send({ data: result });
+  });
+
+  app.post('/internal/data-browser/candidates/:identifier/processing', async (request, reply) => {
+    if (!authenticated(request, config)) return reply.status(401).send({ error: { code: 'UNAUTHORIZED', message: 'Authentication is required.' } });
+    if (!dependencies.processing) return reply.status(503).send({ error: { code: 'PROCESSING_UNAVAILABLE', message: 'Processing is unavailable.' } });
+    const identifier=String((request.params as {identifier?:string}).identifier??'').trim();
+    const operation=(request.body as {operation?:string}|null)?.operation;
+    if((!/^\d{1,18}$/.test(identifier)&&!/^TN\d{8,}$/.test(identifier)&&!/^[0-9a-f-]{36}$/i.test(identifier))||!['process_new_evidence','reprocess_profile','rebuild_projection'].includes(operation??'')) return reply.status(400).send({error:{code:'VALIDATION_ERROR',message:'Invalid processing request.'}});
+    try{const result=await dependencies.processing.enqueueByIdentifier(identifier,operation as 'process_new_evidence'|'reprocess_profile'|'rebuild_projection');return reply.status(result.status==='created'?202:200).send({data:{status:result.status,jobId:result.job.id,jobStatus:result.job.status,operation:result.job.operation}});}catch(error){if(error instanceof CandidateProcessingError){const status=error.code==='CANDIDATE_NOT_FOUND'?404:409;return reply.status(status).send({error:{code:error.code,message:'Processing request could not be safely scheduled.'}});}throw error;}
+  });
+
+  app.post('/internal/data-browser/processing/:jobId/retry', async (request, reply) => {
+    if (!authenticated(request, config)) return reply.status(401).send({ error: { code: 'UNAUTHORIZED', message: 'Authentication is required.' } });
+    if (!dependencies.processing) return reply.status(503).send({ error: { code: 'PROCESSING_UNAVAILABLE', message: 'Processing is unavailable.' } });
+    const jobId=String((request.params as {jobId?:string}).jobId??'');
+    if(!/^[0-9a-f-]{36}$/i.test(jobId))return reply.status(400).send({error:{code:'VALIDATION_ERROR',message:'Invalid processing job.'}});
+    const retried=await dependencies.processing.retryJob(jobId);
+    if(!retried)return reply.status(409).send({error:{code:'JOB_NOT_RETRYABLE',message:'Processing job is not retryable.'}});
+    return reply.status(202).send({data:{status:'created',jobId:retried.id,jobStatus:retried.status,operation:retried.operation}});
   });
 
   app.post('/internal/plugin-sidecar/v1/candidate-enrichment', async (request, reply) => {

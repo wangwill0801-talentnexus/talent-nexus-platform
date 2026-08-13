@@ -114,7 +114,7 @@ test('an unchanged legacy snapshot replay repairs missing projections without cr
   const pool = await makeDatabase(); const { candidateId } = await seed(pool); const service = new CandidateEnrichmentService(pool);
   const input = { candidateId, source: { kind: 'linkedin', system: 'controlled-legacy', reference: 'legacy-snapshot' }, pluginVersion: 'legacy-plugin', payload: { schemaVersion: 'standard_resume_v1', summary: 'Controlled legacy snapshot', experience: [{ company: 'Legacy Co' }], education: [{ school: 'Legacy School' }], skills: ['Legacy Skill'] } };
   const first = await service.storeCandidateEnrichment(input);
-  for (const table of ['candidate_ai_terms','candidate_ai_work_experiences','candidate_ai_educations','candidate_ai_profiles','candidate_resume_evidence','candidate_processing_state']) {
+  for (const table of ['candidate_ai_terms','candidate_ai_work_experiences','candidate_ai_educations','candidate_ai_profiles','candidate_processing_jobs','candidate_resume_evidence','candidate_processing_state']) {
     await pool.query(`DELETE FROM ${table} WHERE candidate_id=$1`, [candidateId]);
   }
   const replay = await service.storeCandidateEnrichment(input);

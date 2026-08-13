@@ -67,3 +67,19 @@ test('internal data browser serves a thin UI and protects candidate data with th
   assert.equal(missing.statusCode, 404);
   await app.close();
 });
+
+test('internal processing controls are authenticated, bounded and never submit ATS data', async () => {
+  const calls:string[]=[];
+  const processing={
+    async enqueueByIdentifier(_id:string,operation:string){calls.push(operation);return {status:'created' as const,job:{id:'0197a1f8-9876-7fef-9f5a-b70a0eed0002',status:'queued',operation}};},
+    async retryJob(id:string){calls.push('retry:'+id);return {id,status:'queued',operation:'rebuild_projection'};},
+    async runOne(){return null;}
+  };
+  const app=buildApp(config,repository,undefined,{processing:processing as never});
+  const denied=await app.inject({method:'POST',url:'/internal/data-browser/candidates/43198/processing',payload:{operation:'rebuild_projection'}});assert.equal(denied.statusCode,401);
+  const invalid=await app.inject({method:'POST',url:'/internal/data-browser/candidates/43198/processing',headers:{authorization:`Bearer ${config.apiToken}`},payload:{operation:'delete_candidate'}});assert.equal(invalid.statusCode,400);
+  const queued=await app.inject({method:'POST',url:'/internal/data-browser/candidates/43198/processing',headers:{authorization:`Bearer ${config.apiToken}`},payload:{operation:'rebuild_projection'}});assert.equal(queued.statusCode,202);
+  const retry=await app.inject({method:'POST',url:'/internal/data-browser/processing/0197a1f8-9876-7fef-9f5a-b70a0eed0002/retry',headers:{authorization:`Bearer ${config.apiToken}`}});assert.equal(retry.statusCode,202);
+  assert.deepEqual(calls,['rebuild_projection','retry:0197a1f8-9876-7fef-9f5a-b70a0eed0002']);
+  await app.close();
+});
