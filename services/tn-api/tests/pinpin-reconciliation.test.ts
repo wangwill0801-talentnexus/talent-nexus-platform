@@ -244,6 +244,42 @@ test('full reconciliation updates only changed entity groups and removes stale c
   await pool.end();
 });
 
+test('expanding a sparse baseline does not match newly inserted rows as prior child identities', async () => {
+  const pool = await makeDatabase();
+  const reconciler = new PinpinToTalentNexusReconciler(pool);
+  const sparse: PinpinCandidateSnapshot = {
+    ...activeFixture,
+    externalCandidateId: '50008',
+    workExperiences: [activeFixture.workExperiences[0]!],
+    educations: [],
+    documents: [],
+  };
+  const first = await reconciler.reconcileCandidate(sparse);
+  const expandedWork = Array.from({ length: 9 }, (_, index) => ({
+    ...activeFixture.workExperiences[0]!,
+    sourceRecordId: `expanded-${index}`,
+    companyName: index === 0 ? activeFixture.workExperiences[0]!.companyName : null,
+    jobTitle: `Expanded ${index}`,
+    department: null,
+    startDate: null,
+    endDate: null,
+    isCurrent: false,
+  }));
+  const expanded = await reconciler.reconcileCandidate({
+    ...sparse,
+    workExperiences: expandedWork,
+    educations: [{ ...activeFixture.educations[0]!, sourceRecordId: 'expanded-education' }],
+  });
+  assert.equal(expanded.candidateId, first.candidateId);
+  assert.equal(expanded.workCount, 9);
+  assert.equal(expanded.educationCount, 1);
+  const noOp = await reconciler.reconcileCandidate({ ...sparse, workExperiences: expandedWork, educations: [{ ...activeFixture.educations[0]!, sourceRecordId: 'expanded-education' }] });
+  assert.equal(noOp.materiallyChanged, false);
+  assert.equal(noOp.workCount, 9);
+  assert.equal(noOp.educationCount, 1);
+  await pool.end();
+});
+
 test('reissued Pinpin child IDs with a single logical edit retain TN child UUIDs', async () => {
   const pool = await makeDatabase();
   const reconciler = new PinpinToTalentNexusReconciler(pool);
