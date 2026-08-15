@@ -9,6 +9,7 @@ import { CandidateProcessingService } from './services/candidate-processing-serv
 import { HistoricalEvidenceIntakeService } from './services/historical-evidence-intake-service.js';
 import { TalentSearchService } from './services/talent-search-service.js';
 import { CandidateIntelligenceService } from './services/candidate-intelligence-service.js';
+import { PinpinEvidenceRequestService } from './services/pinpin-evidence-request-service.js';
 
 if (process.env.TN_ENV === 'production') {
   try { process.loadEnvFile('E:\\TalentNexus\\config\\pinpin-source.env'); } catch (error) {
@@ -26,6 +27,7 @@ const app = buildApp(config, new PostgresCandidateRepository(pool), internalSide
   dataBrowser,
   processing,
   evidenceIntake: new HistoricalEvidenceIntakeService(pool),
+  evidenceRequest: new PinpinEvidenceRequestService(pool),
   talentSearch: new TalentSearchService(pool),
   candidateIntelligence: new CandidateIntelligenceService(dataBrowser)
 });

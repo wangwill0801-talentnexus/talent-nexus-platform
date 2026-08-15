@@ -13,6 +13,7 @@ import { HistoricalEvidenceIntakeError, type HistoricalEvidenceIntakeService } f
 import type { TalentSearchServiceContract } from './domain/talent-search.js';
 import { talentSearchRequestSchema } from './validation/talent-search.js';
 import type { CandidateIntelligenceServiceContract } from './services/candidate-intelligence-service.js';
+import type { PinpinEvidenceRequestService } from './services/pinpin-evidence-request-service.js';
 
 function authenticated(request: { headers: { authorization?: string } }, config: AppConfig): boolean {
   return request.headers.authorization === `Bearer ${config.apiToken}`;
@@ -24,6 +25,7 @@ export type AppDependencies = {
   dataBrowser?: CandidateDataBrowser;
   processing?: Pick<CandidateProcessingService,'enqueueByIdentifier'|'retryJob'|'runOne'>;
   evidenceIntake?: Pick<HistoricalEvidenceIntakeService, 'intake'>;
+  evidenceRequest?: Pick<PinpinEvidenceRequestService, 'resolve'>;
   talentSearch?: TalentSearchServiceContract;
   candidateIntelligence?: CandidateIntelligenceServiceContract;
 };
@@ -233,6 +235,25 @@ export function buildApp(config: AppConfig, repository: CandidateRepository, sid
       return reply.status(401).send({ error: { code: 'ENTRA_AUTH_INVALID', message: 'Valid Entra authentication is required.' } });
     }
     return intakeEvidence(request, reply);
+  });
+
+  app.get('/api/v1/plugin-sidecar/candidate-evidence/request/:identifier', async (request, reply) => {
+    if (!entraVerifier) return reply.status(503).send({ error: { code: 'ENTRA_AUTH_UNAVAILABLE', message: 'Entra authentication is unavailable.' } });
+    try {
+      await entraVerifier.verify(request.headers.authorization);
+    } catch (error) {
+      if (error instanceof EntraAccessTokenError) {
+        const message = error.statusCode === 403 ? 'Required delegated scope is missing.' : 'Valid Entra authentication is required.';
+        return reply.status(error.statusCode).send({ error: { code: error.code, message } });
+      }
+      return reply.status(401).send({ error: { code: 'ENTRA_AUTH_INVALID', message: 'Valid Entra authentication is required.' } });
+    }
+    if (!dependencies.evidenceRequest) return reply.status(503).send({ error: { code: 'EVIDENCE_REQUEST_UNAVAILABLE', message: 'Evidence request is unavailable.' } });
+    const identifier = String((request.params as { identifier?: string }).identifier ?? '').trim();
+    if (!/^\d{1,18}$/.test(identifier)) return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid candidate identifier.' } });
+    const result = await dependencies.evidenceRequest.resolve(identifier);
+    if (!result) return reply.status(404).send({ error: { code: 'CANDIDATE_NOT_FOUND', message: 'Candidate was not found.' } });
+    return reply.send({ data: result });
   });
 
   return app;
