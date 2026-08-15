@@ -1942,3 +1942,117 @@ a separate explicit gate after review of this Golden result.
 **PHASE 4 CONTROLLED PINPIN BLOB GOLDEN REVIEW REQUIRED. Core Golden path
 PASS; do not start baseline backfill, resume pilot, Metadata Watcher or later
 features without explicit approval.**
+
+## 93. TN Master Build — baseline reconciliation, incremental metadata sync and search recall
+
+This section records the subsequent approved backend continuation. The legacy
+Pinpin source remains strictly read-only. No Pinpin/IIS/SQL Server write path,
+candidate mutation, attachment mutation or unselected BLOB read was introduced.
+
+### Physical storage decision
+
+The previously completed storage investigation remains authoritative:
+Pinpin attachments are `DATABASE_BLOB_ONLY`. No safe deterministic VPS local
+filesystem path was found for `CV1106`; therefore no local-file resolver was
+added. The controlled SQL/BLOB adapter is still the preferred backend path for
+the explicitly selected resume, and the Connector authenticated Browser
+Evidence Bridge remains the fallback for browser-session-only retrieval.
+
+### Baseline reconciliation
+
+The live source population was 247 candidates. Before this continuation TN had
+224 scoped Pinpin mappings. The controlled reconciliation created 23 missing
+TN identities and applied 29 material updates; two records initially failed
+because a sparse baseline expansion was incorrectly considered ambiguous. The
+child matcher was corrected to consider only rows that existed before the
+reconciliation pass. A subsequent full run completed with:
+
+| Run | Observed | Created | Materially updated | Unchanged | Failed |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Corrective full reconciliation | 247 | 0 | 1 | 246 | 0 |
+| Immediate second reconciliation | 247 | 0 | 0 | 247 | 0 |
+
+The final population has one scoped external identity per observed Pinpin
+candidate and no duplicate/orphan child records in the verified reconciliation
+summary. The one corrective update was a source-consistent convergence of an
+already existing candidate, not an identity merge.
+
+### Incremental metadata sync
+
+The backend now has a cursor-based, metadata-only incremental runner at
+`dist/pinpin/incremental-sync.js`. It reads candidate high-water, attachment
+ID, history ID/timestamp and deletion timestamp signals, selects only candidates
+above the persisted cursors, reconciles exact scoped identities, and advances
+cursors only after a zero-failure run. It uses the existing advisory lock and
+emits only aggregate status; it never reads resume BLOBs.
+
+Production verification after deployment:
+
+```text
+first run:  observed=247, materiallyUpdated=0, unchanged=247, failed=0,
+            pinpinWrites=0, blobReads=0
+second run: observed=0,   materiallyUpdated=0, unchanged=0,   failed=0,
+            pinpinWrites=0, blobReads=0
+```
+
+The first run is the expected cursor bootstrap; the second run proves the
+persisted-cursor no-op path. A protected `TalentNexusPinpinSync` Task Scheduler
+task is registered under `LOCAL SERVICE`, with startup and 15-minute triggers,
+using the already deployed Node runtime and the protected env files. The task
+is independent of Pinpin and does not grant access to Pinpin application files
+or SQL credentials beyond the existing reviewed read-only boundary.
+
+Deletion tombstones remain a signal for future lifecycle reconciliation, but a
+deleted candidate that no longer has a source master row is intentionally not
+guessed or recreated by this runner; lifecycle handling remains fail-closed.
+
+### Candidate search baseline coverage
+
+Talent Search now reads active TN baseline candidates even when no AI snapshot
+exists. Baseline work and education are used as searchable evidence, while the
+result status is explicitly `not_processed` (`AI Profile 尚未建立`) and evidence
+without a content hash remains unavailable/metadata-only. AI-ready candidates
+continue to use the existing AI projection path and ranking logic; no second
+search or AI architecture was created.
+
+Production smoke using the internal loopback API returned HTTP 200 with a
+bounded result set and preserved the existing protected bearer boundary. The
+candidate list/detail smoke remained 200/200, unknown candidate remained 404,
+and unauthenticated list access remained 401.
+
+### Candidate 360 and Job context assessment
+
+The existing TN Data Browser/Candidate Intelligence endpoints already resolve
+the exact scoped ATS identifier to the immutable TN candidate UUID and expose
+baseline, AI Profile, evidence and processing sections. No name-based route or
+new identity path was introduced.
+
+The TN backend currently has no verified Job entity/API/migration contract;
+the Connector workspace contains existing Job AI Fill source but is a dirty,
+separately versioned release line. Therefore Job Detail → TN Job Intelligence →
+Talent Search was not silently implemented in this backend continuation. It is
+recorded as the next isolated phase requiring an explicit Job contract and
+separate Connector manual gate. Existing New Candidate, Existing Candidate,
+Job, Company, 104, LinkedIn and PDF/DOCX Connector logic was not modified here.
+
+### Release and safety evidence
+
+The deployed backend source commit for this continuation is `3d4d188`; the
+following operational task registration is committed separately as `b0c40ca`.
+The release archive used for deployment is
+`services/tn-api/releases/tn-api-controlled-pinpin-blob-0604e0e-20260815202021.zip`
+with SHA-256
+`9878AA0441748F268C192980045B29BF26D701DD71BDCA8CEE9AE0984597B135`.
+Previous release archives remain in the releases directory and were not
+overwritten. The API task returned Running after deployment; PostgreSQL,
+IIS/W3SVC and SQL Server remained Running; 3333/5432 remain loopback-only and
+1433 has no public listener.
+
+Focused and full TN tests passed (95/95); TypeScript build passed. No migration
+was required. The Connector formal package remains **HOLD / READY FOR MANUAL
+VALIDATION** until the real browser Golden gate is executed; no Connector ZIP
+was released by this phase.
+
+**CURRENT REVIEW REQUIRED:** baseline reconciliation and cursor-based metadata
+sync are ready for operational observation. Job context integration and the
+Connector browser Golden remain separate manual/architecture gates.
