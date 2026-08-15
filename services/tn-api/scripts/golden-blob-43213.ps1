@@ -72,7 +72,7 @@ SELECT json_build_object(
 
 function Trigger() {
   try {
-    $response = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3333/internal/pinpin/candidate-evidence/43213' -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 120
+    $response = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3333/internal/pinpin/candidate-evidence/43213' -Headers @{ Authorization = "Bearer $token" } -ContentType 'application/json' -Body '{}' -TimeoutSec 120
     return [pscustomobject]@{ http = 200; status = $response.data.status; attachmentId = $response.data.attachmentId; fileRef = $response.data.fileRef; actualBlobBytes = $response.data.actualBlobBytes; declaredSizeBytes = $response.data.declaredSizeBytes; declaredSizeMatches = $response.data.declaredSizeMatches; rawSha256Present = [bool]$response.data.rawSha256; contentSha256Present = [bool]$response.data.contentSha256; processingStatus = $response.data.processingStatus }
   } catch {
     $status = 0; try { $status = [int]$_.Exception.Response.StatusCode } catch {}
@@ -104,4 +104,3 @@ try {
   Remove-Item -LiteralPath $pgPassFile -Force -ErrorAction SilentlyContinue
   Remove-Variable token,pgPassword -ErrorAction SilentlyContinue
 }
-
