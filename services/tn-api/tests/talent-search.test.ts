@@ -97,3 +97,22 @@ test('missing content hash is represented as metadata-only evidence', () => {
   assert.equal(result?.evidenceStatus, 'metadata_only');
   assert.ok(result?.evidenceWarnings.includes('SOURCE_NOT_HASHED'));
 });
+
+test('baseline-only candidates remain searchable and are marked not processed', () => {
+  const result = rankCandidateForSearch({
+    ...candidate,
+    snapshot_id: null,
+    current_title: null,
+    profile_status: 'not_processed',
+    professional_summary: null,
+    recruiter_summary: null,
+    work: [{ companyName: 'Baseline Systems', jobTitle: 'Hardware Engineer', description: 'PCB validation' }],
+    education: [],
+    terms: [],
+    evidence: [],
+  }, goldenCriteria('Hardware Engineer'));
+  assert.ok(result);
+  assert.equal(result?.profileStatus, 'not_processed');
+  assert.equal(result?.evidenceStatus, 'unavailable');
+  assert.equal(result?.currentTitle, 'Hardware Engineer');
+});

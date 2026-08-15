@@ -30,7 +30,8 @@
     "processing:worker": "node dist/processing-worker.js",
     "processing:backfill-dry-run": "node dist/services/historical-backfill-dry-run.js",
     "pinpin:full-preflight": "node --env-file=.env dist/pinpin/full-preflight.js",
-    "pinpin:incremental-dry-run": "node --env-file=.env dist/pinpin/incremental-dry-run.js"
+    "pinpin:incremental-dry-run": "node --env-file=.env dist/pinpin/incremental-dry-run.js",
+    "pinpin:sync:incremental": "node dist/pinpin/incremental-sync.js"
   },
   "dependencies": {
     "@google/genai": "2.16.0",

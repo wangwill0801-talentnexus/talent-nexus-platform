@@ -16,7 +16,7 @@ type SearchRow = {
   current_company: string | null;
   current_title: string | null;
   ats_candidate_id: string | null;
-  snapshot_id: string;
+  snapshot_id: string | null;
   profile_updated_at: Date | string | null;
   profile_status: string | null;
   professional_summary: string | null;
@@ -225,33 +225,45 @@ export class TalentSearchService implements TalentSearchServiceContract {
         FROM candidate_ai_profiles profile
         JOIN candidate_enrichment_snapshots snapshot ON snapshot.id=profile.enrichment_snapshot_id
         ORDER BY profile.candidate_id, snapshot.created_at DESC, snapshot.id DESC
+      ), base AS (
+        SELECT c.id,c.candidate_code,c.display_name,c.location_text,c.current_company,c.current_title,c.updated_at,
+          ref.external_candidate_id AS ats_candidate_id
+        FROM candidates c
+        LEFT JOIN LATERAL (
+          SELECT r.external_candidate_id FROM candidate_external_refs r
+          JOIN source_instances s ON s.id=r.source_instance_id
+          WHERE r.candidate_id=c.id AND s.source_system='pinpin' AND s.instance_key='pinpin-prod'
+          ORDER BY r.last_seen_at DESC LIMIT 1
+        ) ref ON true
+        WHERE c.canonical_status='active'
       )
-      SELECT c.id AS candidate_id,c.candidate_code,c.display_name,c.location_text,c.current_company,c.current_title,
-        ref.external_candidate_id AS ats_candidate_id,latest.snapshot_id,latest.profile_updated_at,
-        processing.status AS profile_status,latest.professional_summary,latest.recruiter_summary,
+      SELECT base.id AS candidate_id,base.candidate_code,base.display_name,base.location_text,base.current_company,base.current_title,
+        base.ats_candidate_id,latest.snapshot_id,COALESCE(latest.profile_updated_at,base.updated_at) AS profile_updated_at,
+        COALESCE(processing.status, CASE WHEN latest.snapshot_id IS NULL THEN 'not_processed' ELSE 'completed' END) AS profile_status,
+        latest.professional_summary,latest.recruiter_summary,
         COALESCE((SELECT jsonb_agg(jsonb_build_object(
           'companyName',w.company_name,'jobTitle',w.job_title,'department',w.department,'location',w.location_text,
           'description',w.description,'provenance',w.provenance) ORDER BY w.display_order)
-          FROM candidate_ai_work_experiences w WHERE w.enrichment_snapshot_id=latest.snapshot_id),'[]'::jsonb) AS work,
+          FROM candidate_ai_work_experiences w WHERE w.enrichment_snapshot_id=latest.snapshot_id),
+          (SELECT jsonb_agg(jsonb_build_object(
+            'companyName',w.company_name,'jobTitle',w.job_title,'department',w.department,'location',NULL,
+            'description',w.description,'provenance',w.source_instance_id::text) ORDER BY w.display_order)
+           FROM candidate_work_experiences w WHERE w.candidate_id=base.id),'[]'::jsonb) AS work,
         COALESCE((SELECT jsonb_agg(jsonb_build_object(
           'schoolName',e.school_name,'degree',e.degree_raw,'major',e.major_raw,'provenance',e.provenance) ORDER BY e.display_order)
-          FROM candidate_ai_educations e WHERE e.enrichment_snapshot_id=latest.snapshot_id),'[]'::jsonb) AS education,
+          FROM candidate_ai_educations e WHERE e.enrichment_snapshot_id=latest.snapshot_id),
+          (SELECT jsonb_agg(jsonb_build_object(
+            'schoolName',e.school_name,'degree',e.degree_raw,'major',e.major_raw,'provenance',e.source_instance_id::text) ORDER BY e.display_order)
+           FROM candidate_educations e WHERE e.candidate_id=base.id),'[]'::jsonb) AS education,
         COALESCE((SELECT jsonb_agg(jsonb_build_object('type',t.term_type,'value',t.value,'provenance',t.provenance) ORDER BY t.term_type,t.display_order)
           FROM candidate_ai_terms t WHERE t.enrichment_snapshot_id=latest.snapshot_id),'[]'::jsonb) AS terms,
         COALESCE((SELECT jsonb_agg(jsonb_build_object('sourceType',ev.source_type,'sourceSystem',ev.source_system,
           'contentSha256',ev.content_sha256,'representationKind',ev.representation_kind) ORDER BY ev.created_at DESC)
-          FROM candidate_resume_evidence ev WHERE ev.candidate_id=c.id),'[]'::jsonb) AS evidence
-      FROM latest
-      JOIN candidates c ON c.id=latest.candidate_id
-      LEFT JOIN candidate_processing_state processing ON processing.candidate_id=c.id
-      LEFT JOIN LATERAL (
-        SELECT r.external_candidate_id FROM candidate_external_refs r
-        JOIN source_instances s ON s.id=r.source_instance_id
-        WHERE r.candidate_id=c.id AND s.source_system='pinpin' AND s.instance_key='pinpin-prod'
-        ORDER BY r.last_seen_at DESC LIMIT 1
-      ) ref ON true
-      WHERE c.canonical_status='active'
-      ORDER BY latest.profile_updated_at DESC,c.id DESC
+          FROM candidate_resume_evidence ev WHERE ev.candidate_id=base.id),'[]'::jsonb) AS evidence
+      FROM base
+      LEFT JOIN latest ON latest.candidate_id=base.id
+      LEFT JOIN candidate_processing_state processing ON processing.candidate_id=base.id
+      ORDER BY COALESCE(latest.profile_updated_at,base.updated_at) DESC,base.id DESC
       LIMIT $1
     `, [SEARCH_POOL_LIMIT]);
 
