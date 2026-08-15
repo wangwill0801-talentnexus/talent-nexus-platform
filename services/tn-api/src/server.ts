@@ -11,9 +11,14 @@ import { TalentSearchService } from './services/talent-search-service.js';
 import { CandidateIntelligenceService } from './services/candidate-intelligence-service.js';
 import { PinpinEvidenceRequestService } from './services/pinpin-evidence-request-service.js';
 import { PinpinSourceAdapter } from './pinpin/source-adapter.js';
+import { PinpinBlobAttachmentReader } from './pinpin/blob-adapter.js';
+import { PinpinBlobEvidenceService } from './services/pinpin-blob-evidence-service.js';
 
 if (process.env.TN_ENV === 'production') {
   try { process.loadEnvFile('E:\\TalentNexus\\config\\pinpin-source.env'); } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+  }
+  try { process.loadEnvFile('E:\\TalentNexus\\config\\pinpin-blob.env'); } catch (error) {
     if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
   }
 }
@@ -33,12 +38,19 @@ const pinpinMetadataReader = {
     }
   }
 };
+const pinpinBlobEvidence = new PinpinBlobEvidenceService(
+  pool,
+  pinpinMetadataReader,
+  () => PinpinBlobAttachmentReader.connect(),
+  new HistoricalEvidenceIntakeService(pool)
+);
 const app = buildApp(config, new PostgresCandidateRepository(pool), internalSidecar, {
   publicSidecar: new TargetedPinpinSidecarService(pool, internalSidecar),
   dataBrowser,
   processing,
   evidenceIntake: new HistoricalEvidenceIntakeService(pool),
   evidenceRequest: new PinpinEvidenceRequestService(pool, pinpinMetadataReader),
+  pinpinBlobEvidence,
   talentSearch: new TalentSearchService(pool),
   candidateIntelligence: new CandidateIntelligenceService(dataBrowser)
 });

@@ -14,6 +14,7 @@ import type { TalentSearchServiceContract } from './domain/talent-search.js';
 import { talentSearchRequestSchema } from './validation/talent-search.js';
 import type { CandidateIntelligenceServiceContract } from './services/candidate-intelligence-service.js';
 import type { PinpinEvidenceRequestService } from './services/pinpin-evidence-request-service.js';
+import { PinpinBlobEvidenceError, type PinpinBlobEvidenceService } from './services/pinpin-blob-evidence-service.js';
 
 function authenticated(request: { headers: { authorization?: string } }, config: AppConfig): boolean {
   return request.headers.authorization === `Bearer ${config.apiToken}`;
@@ -26,6 +27,7 @@ export type AppDependencies = {
   processing?: Pick<CandidateProcessingService,'enqueueByIdentifier'|'retryJob'|'runOne'>;
   evidenceIntake?: Pick<HistoricalEvidenceIntakeService, 'intake'>;
   evidenceRequest?: Pick<PinpinEvidenceRequestService, 'resolve'>;
+  pinpinBlobEvidence?: Pick<PinpinBlobEvidenceService, 'ingestBestResume'>;
   talentSearch?: TalentSearchServiceContract;
   candidateIntelligence?: CandidateIntelligenceServiceContract;
 };
@@ -254,6 +256,29 @@ export function buildApp(config: AppConfig, repository: CandidateRepository, sid
     const result = await dependencies.evidenceRequest.resolve(identifier);
     if (!result) return reply.status(404).send({ error: { code: 'CANDIDATE_NOT_FOUND', message: 'Candidate was not found.' } });
     return reply.send({ data: result });
+  });
+
+  app.post('/internal/pinpin/candidate-evidence/:identifier', async (request, reply) => {
+    if (!authenticated(request, config)) return reply.status(401).send({ error: { code: 'UNAUTHORIZED', message: 'Authentication is required.' } });
+    if (!dependencies.pinpinBlobEvidence) return reply.status(503).send({ error: { code: 'PINPIN_BLOB_EVIDENCE_UNAVAILABLE', message: 'Pinpin BLOB evidence is unavailable.' } });
+    const identifier = String((request.params as { identifier?: string }).identifier ?? '').trim();
+    if (!/^\d{1,18}$/.test(identifier)) return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid candidate identifier.' } });
+    try {
+      const result = await dependencies.pinpinBlobEvidence.ingestBestResume(identifier);
+      return reply.status(result.status === 'created' ? 201 : 200).send({ data: {
+        status: result.status, atsCandidateId: result.atsCandidateId, attachmentId: result.attachment.attachmentId,
+        fileRef: result.attachment.fileRef, actualBlobBytes: result.actualBlobBytes, declaredSizeBytes: result.declaredSizeBytes,
+        declaredSizeMatches: result.declaredSizeMatches, rawSha256: result.rawSha256, normalizedTextCharacters: result.normalizedTextCharacters,
+        contentSha256: result.contentSha256, evidenceId: result.evidenceId, snapshotId: result.snapshotId, processingStatus: result.processingStatus
+      } });
+    } catch (error) {
+      if (error instanceof PinpinBlobEvidenceError) {
+        const status = error.code === 'BLOB_CANDIDATE_NOT_FOUND' ? 404 : error.code === 'BLOB_IDENTITY_CONFLICT' ? 409 : 422;
+        request.log.warn({ requestId: request.id, route: request.routeOptions.url, errorCode: error.code }, 'Pinpin BLOB evidence rejected');
+        return reply.status(status).send({ error: { code: error.code, message: 'Pinpin BLOB evidence could not be safely accepted.' } });
+      }
+      throw error;
+    }
   });
 
   return app;
