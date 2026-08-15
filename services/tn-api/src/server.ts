@@ -10,6 +10,7 @@ import { HistoricalEvidenceIntakeService } from './services/historical-evidence-
 import { TalentSearchService } from './services/talent-search-service.js';
 import { CandidateIntelligenceService } from './services/candidate-intelligence-service.js';
 import { PinpinEvidenceRequestService } from './services/pinpin-evidence-request-service.js';
+import { PinpinSourceAdapter } from './pinpin/source-adapter.js';
 
 if (process.env.TN_ENV === 'production') {
   try { process.loadEnvFile('E:\\TalentNexus\\config\\pinpin-source.env'); } catch (error) {
@@ -22,12 +23,22 @@ const pool = createPool(config.databaseUrl);
 const internalSidecar = new PluginSidecarIntakeService(pool);
 const processing = new CandidateProcessingService(pool);
 const dataBrowser = new CandidateDataBrowserService(pool);
+const pinpinMetadataReader = {
+  async readCandidate(externalCandidateId: number) {
+    const adapter = await PinpinSourceAdapter.connect();
+    try {
+      return await adapter.readCandidate(externalCandidateId);
+    } finally {
+      await adapter.close();
+    }
+  }
+};
 const app = buildApp(config, new PostgresCandidateRepository(pool), internalSidecar, {
   publicSidecar: new TargetedPinpinSidecarService(pool, internalSidecar),
   dataBrowser,
   processing,
   evidenceIntake: new HistoricalEvidenceIntakeService(pool),
-  evidenceRequest: new PinpinEvidenceRequestService(pool),
+  evidenceRequest: new PinpinEvidenceRequestService(pool, pinpinMetadataReader),
   talentSearch: new TalentSearchService(pool),
   candidateIntelligence: new CandidateIntelligenceService(dataBrowser)
 });
