@@ -1855,3 +1855,90 @@ authentication or Plugin HTTPS recognition without explicit approval.**
 # Phase 6B.2A-2B — TN Entra Access Token Validation
 
 TN API now has a separate Entra-protected public side-car route at `POST /api/v1/plugin-sidecar/candidate-enrichment`. It validates Microsoft Entra v2 access tokens using tenant OpenID/JWKS metadata, RS256 signature verification, configured issuer, API client-ID GUID audience, tenant claim, expiry/not-before, `ver=2.0`, and delegated `TN.Sidecar.Write` scope. The existing internal route remains on the existing TN bearer token. The public route reuses `PluginSidecarIntakeService` and preserves Pinpin-first, exact external identity, snapshot-only semantics. Chrome redirect configuration, Plugin sender, and Silent SSO remain deferred to Phase 6B.2B.
+
+## 92. Controlled Pinpin BLOB Evidence Adapter — Golden #43213
+
+### Scope and safety gate
+
+This phase implemented only the controlled Pinpin attachment-content boundary.
+The Legacy ATS remains read-only: no candidate/attachment DML, no DDL, no
+bulk BLOB scan, and no BLOB read outside the explicitly selected current
+resume. The existing Connector Browser Evidence Bridge remains available as a
+fallback; it was not removed or redesigned.
+
+The TN backend release was deployed through the existing rollback-aware
+`TalentNexusApi` procedure. Production commit was `ea39155` and the deployed
+archive SHA-256 was
+`212E227528D003CA64A18A0E2BB8780C33E97BECE940E6029283821EFFD77ECD`.
+No migration was applied (the existing migration ledger already contained
+`005_historical_evidence_bridge.sql`). TN API and the processing worker are
+running on their existing loopback/local boundaries.
+
+### BLOB reader and credential
+
+A dedicated `tn_pinpin_blob_ro` SQL login was created outside source control.
+It has `CONNECT` and column-level `SELECT` only on
+`dbo.ZPResumeInfo_Annex_Other` for `ID`, `ZPResumeInfo_ID`, `FileName`,
+`FileType`, `Filesize`, `CreDate` and `Annex`. `Annex1` is not readable;
+`INSERT`, `UPDATE`, `DELETE`, `EXECUTE`, `ALTER`, `db_datareader` and
+`sysadmin` checks are all negative. The protected credential file remains
+outside the application tree with its existing restricted ACL. No secret was
+printed, logged or committed.
+
+Two runtime issues found by the first controlled request were repaired in the
+minimum possible scope: the protected SQL env file is now loaded by a
+content-preserving server-only loader, and the existing evidence insert uses
+generic `ON CONFLICT DO NOTHING` so it correctly cooperates with the existing
+partial unique identity index. No new data model or competing intake protocol
+was introduced.
+
+### Golden result — ATS Candidate 43213
+
+The deterministic scoped identity resolved exactly one TN candidate for
+`pinpin + pinpin-prod + 43213`. Candidate UUID and operational TN code stayed
+unchanged (`TN00000188`). The resolver selected `CV1106` as the newer DOCX
+resume. `CV1056` remains historical Resume Evidence; `CV1075` (image) and
+`CV1105` (recruiter report) were not selected. The CV1106 filename metadata is
+known to be a DOCX resume; its personal filename value is intentionally omitted
+from this report.
+
+The exact CV1106 BLOB read returned 47,929 bytes, matching the declared
+metadata size, and produced a raw-byte SHA-256. DOCX extraction produced
+bounded text (2,842 characters) and submitted only that text to the existing
+`candidate_evidence_intake_v1` path. The persisted evidence is content-backed,
+`source_type=docx`, `representation_kind=local_file_text`,
+`processing_eligible=true`, with a normalized-text SHA/evidence identity key.
+The existing worker completed processing with one extraction, one completed
+job, one StandardResumeV1 snapshot and one AI Profile. Data Browser and
+Candidate Intelligence returned 200.
+
+The same controlled endpoint was then invoked again without source changes.
+Both replay responses were `unchanged`; evidence count, snapshot count,
+candidate UUID/code, and all duplicate counters remained stable at zero.
+The controlled diagnostics performed four exact reads of CV1106 in total (one
+failed-intake diagnostic, one successful creation, and the two final replay
+checks); unselected BLOB reads were zero. No Pinpin writes or attachment
+mutations occurred.
+
+The existing schema stores `candidate_resume_evidence.content_sha256` as the
+hash of normalized extracted text. The raw BLOB SHA was computed and verified
+for this Golden but is not stored in a separate raw-hash column; this remains an
+explicit contract limitation rather than a source-identity substitute.
+
+### Validation and deferred work
+
+TN TypeScript build: PASS. Full TN test suite: **89/89 PASS**. Connector
+fallback-related tests remain passing. Production smoke checks: TN health 200,
+candidate API 200, Data Browser 200, Candidate Intelligence 200, Pinpin Chinese
+and English `/webapp/` 200, PostgreSQL/IIS/SQL Server Running, API and worker
+tasks Running, and listeners remain loopback-only (3333/5432; no 1433
+listener). Credentials exposed, ATS cookies sent to TN, Legacy ATS writes,
+attachment mutations and arbitrary BLOB scans: 0.
+
+The 100+ Candidate baseline backfill and the controlled 5–10 resume pilot were
+**not executed** in this phase. Metadata Watcher work is deferred. They require
+a separate explicit gate after review of this Golden result.
+
+**PHASE 4 CONTROLLED PINPIN BLOB GOLDEN REVIEW REQUIRED. Core Golden path
+PASS; do not start baseline backfill, resume pilot, Metadata Watcher or later
+features without explicit approval.**
