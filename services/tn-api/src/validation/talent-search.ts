@@ -21,10 +21,22 @@ export const talentSearchCriteriaSchema = z.object({
   keywords: list,
   excluded: list,
   freeText: z.string().trim().max(4_000).default(''),
-  confidence: z.number().min(0).max(1).default(0)
+  confidence: z.number().min(0).max(1).default(0),
+  mustMatchAll: z.boolean().default(false)
 });
 
-export const talentSearchRequestSchema = z.object({
-  criteria: talentSearchCriteriaSchema,
-  limit: z.coerce.number().int().min(1).max(50).default(20)
+const limit = z.coerce.number().int().min(1).max(50).default(20);
+
+/**
+ * The UI may send a natural-language query. The backend owns query
+ * understanding and deterministic database ranking; structured callers keep
+ * the previous contract unchanged.
+ */
+export const talentSearchRequestSchema = z.union([
+  z.object({ query: z.string().trim().min(1).max(4_000), limit, mustMatchAll: z.boolean().default(false) }),
+  z.object({ criteria: talentSearchCriteriaSchema, limit })
+]);
+
+export const talentSearchIntentSchema = talentSearchCriteriaSchema.extend({
+  mustMatchAll: z.boolean().default(false)
 });

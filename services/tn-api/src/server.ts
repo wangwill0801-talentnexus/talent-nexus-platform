@@ -13,7 +13,9 @@ import { PinpinEvidenceRequestService } from './services/pinpin-evidence-request
 import { PinpinSourceAdapter } from './pinpin/source-adapter.js';
 import { PinpinBlobAttachmentReader } from './pinpin/blob-adapter.js';
 import { PinpinBlobEvidenceService } from './services/pinpin-blob-evidence-service.js';
+import { PostgresJobContextService } from './services/job-context-service.js';
 import { loadProtectedEnvFile } from './config/protected-env.js';
+import { createAiProvider, loadAiConfig } from './ai/index.js';
 
 if (process.env.TN_ENV === 'production') {
   loadProtectedEnvFile('E:\\TalentNexus\\config\\pinpin-source.env');
@@ -21,6 +23,7 @@ if (process.env.TN_ENV === 'production') {
 }
 
 const config = loadConfig();
+const aiProvider = createAiProvider(loadAiConfig());
 const pool = createPool(config.databaseUrl);
 const internalSidecar = new PluginSidecarIntakeService(pool);
 const processing = new CandidateProcessingService(pool);
@@ -41,6 +44,7 @@ const pinpinBlobEvidence = new PinpinBlobEvidenceService(
   () => PinpinBlobAttachmentReader.connect(),
   new HistoricalEvidenceIntakeService(pool)
 );
+const jobContext = new PostgresJobContextService(pool, aiProvider);
 const app = buildApp(config, new PostgresCandidateRepository(pool), internalSidecar, {
   publicSidecar: new TargetedPinpinSidecarService(pool, internalSidecar),
   dataBrowser,
@@ -48,8 +52,9 @@ const app = buildApp(config, new PostgresCandidateRepository(pool), internalSide
   evidenceIntake: new HistoricalEvidenceIntakeService(pool),
   evidenceRequest: new PinpinEvidenceRequestService(pool, pinpinMetadataReader),
   pinpinBlobEvidence,
-  talentSearch: new TalentSearchService(pool),
+  talentSearch: new TalentSearchService(pool, aiProvider),
   candidateIntelligence: new CandidateIntelligenceService(dataBrowser)
+  ,jobContext
 });
 
 async function shutdown(signal: string): Promise<void> {

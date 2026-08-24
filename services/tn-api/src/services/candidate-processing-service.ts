@@ -65,11 +65,14 @@ export class CandidateProcessingService {
     if(candidates.rows.length===0) throw new CandidateProcessingError('CANDIDATE_NOT_FOUND');
     if(candidates.rows.length!==1) throw new CandidateProcessingError('IDENTITY_AMBIGUOUS');
     const candidateId=candidates.rows[0]!.id;
-    const source=await this.database.query<Record<string,unknown>>(`SELECT s.id snapshot_id,s.schema_version,s.parser_version,s.ai_provider,s.ai_model,e.id evidence_id,e.evidence_fingerprint,e.extractor_version,e.processing_eligible FROM candidate_enrichment_snapshots s LEFT JOIN candidate_resume_evidence e ON e.enrichment_snapshot_id=s.id WHERE s.candidate_id=$1 ORDER BY s.created_at DESC,s.id DESC LIMIT 2`,[candidateId]);
+    const sourceQuery=operation==='rebuild_projection'
+      ? `SELECT s.id snapshot_id,s.schema_version,s.parser_version,s.ai_provider,s.ai_model,e.id evidence_id,e.evidence_fingerprint,e.extractor_version,e.processing_eligible,x.id extraction_id FROM candidate_enrichment_snapshots s LEFT JOIN candidate_resume_evidence e ON e.enrichment_snapshot_id=s.id LEFT JOIN candidate_evidence_extractions x ON x.evidence_id=e.id AND x.candidate_id=e.candidate_id AND x.status='available' AND x.character_count>0 AND lower(x.content_sha256)=lower(e.content_sha256) AND x.extractor_version=e.extractor_version AND x.representation_kind=e.representation_kind WHERE s.candidate_id=$1 ORDER BY s.created_at DESC,s.id DESC LIMIT 2`
+      : `SELECT s.id snapshot_id,s.schema_version,s.parser_version,s.ai_provider,s.ai_model,e.id evidence_id,e.evidence_fingerprint,e.extractor_version,e.processing_eligible,x.id extraction_id FROM candidate_enrichment_snapshots s JOIN candidate_resume_evidence e ON e.enrichment_snapshot_id=s.id JOIN candidate_evidence_extractions x ON x.evidence_id=e.id AND x.candidate_id=e.candidate_id AND x.status='available' AND x.character_count>0 AND lower(x.content_sha256)=lower(e.content_sha256) AND x.extractor_version=e.extractor_version AND x.representation_kind=e.representation_kind WHERE s.candidate_id=$1 AND e.evidence_fingerprint IS NOT NULL AND e.processing_eligible=true ORDER BY s.created_at DESC,s.id DESC LIMIT 2`;
+    const source=await this.database.query<Record<string,unknown>>(sourceQuery,[candidateId]);
     if(source.rows.length===0) throw new CandidateProcessingError('EVIDENCE_NOT_ELIGIBLE');
     const latest=source.rows[0]!;
-    if(operation!=='rebuild_projection' && (!latest.evidence_id || !latest.evidence_fingerprint || latest.processing_eligible!==true)) throw new CandidateProcessingError('EVIDENCE_NOT_ELIGIBLE');
-    return this.enqueue({candidateId,evidenceId:latest.evidence_id as string|null,operation,evidenceFingerprint:latest.evidence_fingerprint as string|null,extractorVersion:latest.extractor_version as string|null,parserVersion:String(latest.parser_version??'legacy_netlify_parser_unknown'),schemaVersion:String(latest.schema_version),aiProvider:latest.ai_provider as string|null,aiModel:latest.ai_model as string|null,requestedBy});
+    if(operation!=='rebuild_projection' && (!latest.evidence_id || !latest.extraction_id || !latest.evidence_fingerprint || latest.processing_eligible!==true)) throw new CandidateProcessingError('EVIDENCE_NOT_ELIGIBLE');
+    return this.enqueue({candidateId,evidenceId:latest.evidence_id as string|null,extractionId:latest.extraction_id as string|null,operation,evidenceFingerprint:latest.evidence_fingerprint as string|null,extractorVersion:latest.extractor_version as string|null,parserVersion:String(latest.parser_version??'legacy_netlify_parser_unknown'),schemaVersion:String(latest.schema_version),aiProvider:latest.ai_provider as string|null,aiModel:latest.ai_model as string|null,requestedBy});
   }
 
   async runOne(): Promise<ProcessingJob | null> {
@@ -96,11 +99,26 @@ export class CandidateProcessingService {
   async markStale(candidateId:string,reason:string):Promise<void>{ const safe=safeCode(reason); await this.database.query(`UPDATE candidate_processing_state SET status='stale',stale_reason=$2,updated_at=now() WHERE candidate_id=$1`,[candidateId,safe]); }
 
   async retryJob(jobId:string):Promise<ProcessingJob|null>{
-    const result=await this.database.query<JobRow>(`UPDATE candidate_processing_jobs SET status='queued',attempt_count=0,available_at=now(),claimed_at=NULL,claim_token=NULL,finished_at=NULL,last_error_code=NULL,last_error_summary=NULL,updated_at=now() WHERE id=$1 AND status IN ('failed','needs_review','dead_letter') RETURNING ${projection}`,[jobId]);
-    if(!result.rows[0])return null;
-    const current=job(result.rows[0]);
-    await this.database.query(`UPDATE candidate_processing_state SET status='queued',latest_job_id=$2,last_error_code=NULL,updated_at=now() WHERE candidate_id=$1`,[current.candidateId,current.id]);
-    return current;
+    const client=await this.database.connect();
+    try{
+      await client.query('BEGIN');
+      const prior=await client.query<JobRow>(`SELECT ${projection} FROM candidate_processing_jobs WHERE id=$1 AND status IN ('failed','needs_review','dead_letter') FOR UPDATE`,[jobId]);
+      if(!prior.rows[0]){await client.query('ROLLBACK');return null;}
+      const previous=job(prior.rows[0]);
+      let extractionId=previous.extractionId;
+      // Recover jobs created by the pre-fix enqueue path. They may have a
+      // valid evidence row but no extraction_id; resolve only the exact
+      // matching available extraction and fail closed on ambiguity.
+      if(previous.operation==='process_new_evidence'&&!extractionId&&previous.evidenceId&&previous.evidenceFingerprint){
+        const matches=await client.query<{id:string}>(`SELECT x.id FROM candidate_evidence_extractions x WHERE x.evidence_id=$1 AND x.candidate_id=$2 AND x.status='available' AND x.character_count>0 AND lower(x.content_sha256)=lower($3) LIMIT 2`,[previous.evidenceId,previous.candidateId,previous.evidenceFingerprint]);
+        if(matches.rows.length===1) extractionId=matches.rows[0]!.id;
+      }
+      const result=await client.query<JobRow>(`UPDATE candidate_processing_jobs SET status='queued',extraction_id=COALESCE($2,extraction_id),attempt_count=0,available_at=now(),claimed_at=NULL,claim_token=NULL,finished_at=NULL,last_error_code=NULL,last_error_summary=NULL,updated_at=now() WHERE id=$1 RETURNING ${projection}`,[jobId,extractionId]);
+      const current=job(result.rows[0]!);
+      await client.query(`UPDATE candidate_processing_state SET status='queued',latest_job_id=$2,last_error_code=NULL,updated_at=now() WHERE candidate_id=$1`,[current.candidateId,current.id]);
+      await client.query('COMMIT');
+      return current;
+    }catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}finally{client.release();}
   }
 
   async recoverStaleClaims(olderThanMinutes=15):Promise<number>{

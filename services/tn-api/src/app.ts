@@ -15,6 +15,7 @@ import { talentSearchRequestSchema } from './validation/talent-search.js';
 import type { CandidateIntelligenceServiceContract } from './services/candidate-intelligence-service.js';
 import type { PinpinEvidenceRequestService } from './services/pinpin-evidence-request-service.js';
 import { PinpinBlobEvidenceError, type PinpinBlobEvidenceService } from './services/pinpin-blob-evidence-service.js';
+import type { JobContextInput, JobContextService } from './services/job-context-service.js';
 
 function authenticated(request: { headers: { authorization?: string } }, config: AppConfig): boolean {
   return request.headers.authorization === `Bearer ${config.apiToken}`;
@@ -30,6 +31,7 @@ export type AppDependencies = {
   pinpinBlobEvidence?: Pick<PinpinBlobEvidenceService, 'ingestBestResume'>;
   talentSearch?: TalentSearchServiceContract;
   candidateIntelligence?: CandidateIntelligenceServiceContract;
+  jobContext?: JobContextService;
 };
 
 export function buildApp(config: AppConfig, repository: CandidateRepository, sidecar?: PluginSidecarIntake, dependencies: AppDependencies = {}): FastifyInstance {
@@ -45,6 +47,12 @@ export function buildApp(config: AppConfig, repository: CandidateRepository, sid
     logController: new LogController({ disableRequestLogging: true })
   });
   const entraVerifier = dependencies.entraVerifier ?? (config.entra ? new MicrosoftEntraAccessTokenVerifier(config.entra) : undefined);
+
+  async function webAuthenticated(request: FastifyRequest): Promise<boolean> {
+    if (authenticated(request, config)) return true;
+    if (!entraVerifier) return false;
+    try { await entraVerifier.verify(request.headers.authorization); return true; } catch { return false; }
+  }
 
   async function intakeSidecar(request: FastifyRequest, reply: FastifyReply, intake: PluginSidecarIntake | undefined = sidecar, includeBaseline = false) {
     if (!intake) return reply.status(503).send({ error: { code: 'SIDECAR_UNAVAILABLE', message: 'Side-car intake is unavailable.' } });
@@ -190,8 +198,69 @@ export function buildApp(config: AppConfig, repository: CandidateRepository, sid
     if (!authenticated(request, config)) return reply.status(401).send({ error: { code: 'UNAUTHORIZED', message: 'Authentication is required.' } });
     if (!dependencies.talentSearch) return reply.status(503).send({ error: { code: 'SEARCH_UNAVAILABLE', message: 'Talent Search is unavailable.' } });
     const parsed = talentSearchRequestSchema.safeParse(request.body);
-    if (!parsed.success) return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid structured search criteria.' } });
+    if (!parsed.success) return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid search request.' } });
+    if ('query' in parsed.data) {
+      if (!dependencies.talentSearch.searchQuery) return reply.status(503).send({ error: { code: 'SEARCH_QUERY_UNAVAILABLE', message: 'Natural-language search is unavailable.' } });
+      return reply.send({ data: await dependencies.talentSearch.searchQuery(parsed.data.query, parsed.data.limit, parsed.data.mustMatchAll) });
+    }
     return reply.send({ data: await dependencies.talentSearch.search(parsed.data) });
+  });
+
+  app.post('/api/v1/jobs/context', async (request, reply) => {
+    if (!(await webAuthenticated(request))) return reply.status(401).send({ error: { code: 'UNAUTHORIZED', message: 'Authentication is required.' } });
+    if (!dependencies.jobContext) return reply.status(503).send({ error: { code: 'JOB_CONTEXT_UNAVAILABLE', message: 'Job context is unavailable.' } });
+    const body = request.body as Partial<JobContextInput> | null;
+    const externalJobId = String(body?.externalJobId ?? '').trim();
+    if (body?.sourceSystem !== 'pinpin' || body?.sourceInstance !== 'pinpin-prod' || !/^\d{1,18}$/.test(externalJobId)) {
+      return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid Job context.' } });
+    }
+    const result = await dependencies.jobContext.upsert({
+      sourceSystem: 'pinpin', sourceInstance: 'pinpin-prod', externalJobId,
+      sourceUrl: typeof body?.sourceUrl === 'string' ? body.sourceUrl : null,
+      title: typeof body?.title === 'string' ? body.title : null,
+      client: typeof body?.client === 'string' ? body.client : null,
+      description: typeof body?.description === 'string' ? body.description : null,
+      requirements: typeof body?.requirements === 'string' ? body.requirements : null,
+      location: typeof body?.location === 'string' ? body.location : null,
+      salary: typeof body?.salary === 'string' ? body.salary : null,
+      supplemental: typeof body?.supplemental === 'string' ? body.supplemental : null
+    });
+    return reply.send({ data: result });
+  });
+
+  app.get('/api/v1/jobs/:externalJobId', async (request, reply) => {
+    if (!(await webAuthenticated(request))) return reply.status(401).send({ error: { code: 'UNAUTHORIZED', message: 'Authentication is required.' } });
+    if (!dependencies.jobContext) return reply.status(503).send({ error: { code: 'JOB_CONTEXT_UNAVAILABLE', message: 'Job context is unavailable.' } });
+    const externalJobId = String((request.params as { externalJobId?: string }).externalJobId ?? '').trim();
+    if (!/^\d{1,18}$/.test(externalJobId)) return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid Job identifier.' } });
+    const result = await dependencies.jobContext.get(externalJobId);
+    if (!result) return reply.status(404).send({ error: { code: 'JOB_NOT_FOUND', message: 'Job was not found.' } });
+    return reply.send({ data: result });
+  });
+
+  app.post('/api/v1/jobs/:externalJobId/search', async (request, reply) => {
+    if (!(await webAuthenticated(request))) return reply.status(401).send({ error: { code: 'UNAUTHORIZED', message: 'Authentication is required.' } });
+    if (!dependencies.jobContext || !dependencies.talentSearch?.searchQuery) return reply.status(503).send({ error: { code: 'JOB_SEARCH_UNAVAILABLE', message: 'Job search is unavailable.' } });
+    const externalJobId = String((request.params as { externalJobId?: string }).externalJobId ?? '').trim();
+    if (!/^\d{1,18}$/.test(externalJobId)) return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid Job identifier.' } });
+    const body = request.body as { limit?: unknown } | null;
+    const limit = typeof body?.limit === 'number' ? Math.max(1, Math.min(50, Math.floor(body.limit))) : 20;
+    const job = await dependencies.jobContext.get(externalJobId);
+    if (!job) return reply.status(404).send({ error: { code: 'JOB_NOT_FOUND', message: 'Job was not found.' } });
+    const query = await dependencies.jobContext.searchQuery(externalJobId);
+    if (!query) return reply.status(404).send({ error: { code: 'JOB_NOT_FOUND', message: 'Job was not found.' } });
+    const description = typeof job.description === 'string' ? job.description.trim() : '';
+    const requirements = typeof job.requirements === 'string' ? job.requirements.trim() : '';
+    const queryQuality = description.length + requirements.length >= 40 ? 'jd_backed' : 'title_or_structured_only';
+    const queryWarning = queryQuality === 'jd_backed'
+      ? null
+      : 'JD 未提供或內容不足；目前結果主要依職稱與結構化欄位，補充完整 JD 可提高準確度。';
+    return reply.send({ data: {
+      jobId: externalJobId,
+      queryQuality,
+      queryWarning,
+      ...(await dependencies.talentSearch.searchQuery(query, limit))
+    } });
   });
 
   app.get('/api/v1/candidate-intelligence/:identifier', async (request, reply) => {

@@ -1,4 +1,5 @@
 import type { DatabasePool } from '../db/pool.js';
+import type { AiProvider } from '../ai/types.js';
 import type {
   TalentSearchCriteria,
   TalentSearchMatch,
@@ -7,6 +8,7 @@ import type {
   TalentSearchServiceContract
 } from '../domain/talent-search.js';
 import { isRoleTerm, matchesEvidence, matchesSearchTerm, normalizeSearchText } from '../domain/search-normalization.js';
+import { talentSearchIntentSchema } from '../validation/talent-search.js';
 
 type SearchRow = {
   candidate_id: string;
@@ -54,6 +56,56 @@ function unique(values: string[]): string[] {
   return [...new Set(values.map(text).filter(Boolean))];
 }
 
+function queryTokens(query: string): string[] {
+  const stopWords = new Set(['and', 'or', 'with', 'the', 'a', 'an', 'for', '有', '找', '尋找', '想找', '的人', '人選', '經驗', '與客戶', '工作內容', '職缺內容', '客戶公司']);
+  return unique(query
+    .split(/[\s,，、;；|/()（）•●]+/)
+    .map((value) => value.trim().replace(/^\d+[.)、．:\：-]?$/, '').replace(/^\d+[.)、．:\：-]\s*/, ''))
+    .filter((value) => value.length >= 2 && !/^\d+[.)、．:\：-]?$/.test(value) && !stopWords.has(value.toLocaleLowerCase('en-US'))))
+    .slice(0, 24);
+}
+
+const CRITERIA_LIST_FIELDS = [
+  'targetRoles', 'titles', 'skills', 'functions', 'industries', 'companies',
+  'locations', 'languages', 'education', 'mustHave', 'niceToHave', 'keywords', 'excluded'
+] as const;
+
+function cleanCriteriaTerm(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const term = value.trim()
+    .replace(/^(?:[-•*]\s*|\d+[.)、．:\：-]\s*)/, '')
+    .replace(/[<>]/g, '')
+    .replace(/[。．.、,，;；:：]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!term || /^\d+[.)、．:\：-]?$/.test(term)) return null;
+  if (/^(?:null|undefined|n\/a|na|待確認|未提供|工作內容|職缺內容|職務類別|產業類別|公司規模|管理責任|年資|經驗|以上|人以上|導入|獎金|年終獎金|福利|勞保|健保|三節|退休金|待遇面議)$/i.test(term)) return null;
+  if (/(?:直接管理人數|公司規模|管理責任|職務類別|產業類別)/i.test(term)) return null;
+  return term;
+}
+
+function sanitizeCriteria(criteria: TalentSearchCriteria): TalentSearchCriteria {
+  const next = { ...criteria };
+  for (const field of CRITERIA_LIST_FIELDS) {
+    const values = Array.isArray(next[field]) ? next[field] : [];
+    next[field] = unique(values.map(cleanCriteriaTerm).filter((value): value is string => Boolean(value))) as never;
+  }
+  if (typeof next.seniority === 'string') next.seniority = cleanCriteriaTerm(next.seniority);
+  // Promote recognized role-family aliases out of generic keywords so that
+  // Firmware/EE/Hardware carry role weight instead of competing with broad
+  // terms such as "Engineer" at the same low keyword weight.
+  const promotedRoles = next.keywords.filter(isRoleTerm);
+  if (promotedRoles.length) {
+    next.targetRoles = unique([...next.targetRoles, ...promotedRoles]);
+    next.keywords = next.keywords.filter((value) => !isRoleTerm(value));
+  }
+  return next;
+}
+
+function criteriaSignalCount(criteria: TalentSearchCriteria): number {
+  return CRITERIA_LIST_FIELDS.reduce((count, field) => count + criteria[field].length, 0);
+}
+
 function hasTerm(haystack: string, term: string): boolean {
   return matchesSearchTerm(haystack, term);
 }
@@ -95,20 +147,12 @@ function rank(row: SearchRow, criteria: TalentSearchCriteria): TalentSearchMatch
   // Recall and precision are separate stages. The SQL read model intentionally
   // retrieves a broad pool; this gate prevents a secondary preference such as
   // location from turning a candidate with no credible core function evidence
-  // into a meaningful result. Core requests come from the parsed role/function
-  // fields and role-like free-text terms, while the evidence surface includes
-  // historical titles and descriptions for transferable experience.
-  const freeTextRoleTerms = criteria.freeText
-    .split(/[\s,;|/()]+/)
-    .map((value) => value.trim())
-    .filter((value) => value.length >= 2 && isRoleTerm(value));
-  const coreRoleRequests = unique([
+  // into a meaningful result. Explicit role/function fields and evidence-backed
+  // skill/domain signals can qualify a result; location alone cannot.
+  const explicitRoleRequests = unique([
     ...criteria.targetRoles,
     ...criteria.titles,
-    ...criteria.functions,
-    ...criteria.mustHave,
-    ...criteria.keywords,
-    ...freeTextRoleTerms
+    ...criteria.functions
   ]).filter((value) => isRoleTerm(value));
   const coreEvidence = normalize(unique([
     ...titleValues,
@@ -119,18 +163,51 @@ function rank(row: SearchRow, criteria: TalentSearchCriteria): TalentSearchMatch
     row.recruiter_summary ?? '',
     ...work.flatMap((item) => [text(item.jobTitle), text(item.department), text(item.description)])
   ]).join(' | '));
-  const coreRoleMatched = coreRoleRequests.length === 0
-    || coreRoleRequests.some((requestedValue) => matchesSearchTerm(coreEvidence, requestedValue));
+  const explicitRoleMatched = explicitRoleRequests.length === 0
+    || explicitRoleRequests.some((requestedValue) => matchesSearchTerm(coreEvidence, requestedValue));
+  const coreSignalRequests = unique([
+    ...criteria.skills,
+    ...criteria.mustHave,
+    ...criteria.keywords,
+    ...criteria.industries,
+    ...criteria.companies,
+    ...criteria.niceToHave,
+    ...queryTokens(criteria.freeText)
+  ]);
+  const coreSignalMatched = coreSignalRequests.length > 0
+    && coreSignalRequests.some((requestedValue) => matchesEvidence(coreEvidence, requestedValue));
+  // Normal searches are intentionally soft: a candidate may be adjacent when
+  // a skill/domain signal matches even if one requested role label does not.
+  // Explicit mustMatchAll is reserved for recruiters who really require every
+  // requested signal.
+  const strictRequests = unique([
+    ...criteria.targetRoles,
+    ...criteria.titles,
+    ...criteria.functions,
+    ...criteria.skills,
+    ...criteria.mustHave
+  ]);
+  const strictMatched = strictRequests.every((requestedValue) => matchesEvidence(coreEvidence, requestedValue));
+  const coreEligible = criteria.mustMatchAll
+    ? strictMatched
+    : explicitRoleRequests.length > 0 ? explicitRoleMatched || coreSignalMatched : coreSignalMatched;
 
   const matched: string[] = [];
   const gaps: string[] = [];
   const explanationFacts: string[] = [];
   let points = 0;
   let possible = 0;
+  const scoreBreakdown: TalentSearchMatch['scoreBreakdown'] = [];
 
   const scoreGroup = (label: string, requested: string[], fieldValues: string[], weight: number, missingAsGap = false) => {
-    for (const requestedValue of unique(requested)) {
-      possible += weight;
+    let matchedCount = 0;
+    let contribution = 0;
+    const requestedValues = unique(requested);
+    for (const requestedValue of requestedValues) {
+      const normalizedRequested = normalize(requestedValue);
+      const genericRole = label === '關鍵字' && /^(?:engineer|developer|manager|工程師|主管|職員)$/.test(normalizedRequested);
+      const termWeight = genericRole ? Math.max(1, Math.round(weight * 0.25)) : weight;
+      possible += termWeight;
       const fieldText = normalize(fieldValues.join(' | '));
       const evidenceText = fieldText || searchable;
       // Use the same evidence-aware matcher for every group so aliases and
@@ -138,14 +215,19 @@ function rank(row: SearchRow, criteria: TalentSearchCriteria): TalentSearchMatch
       // and preference fields. This still never invents candidate facts.
       const matchedTerm = matchesEvidence(evidenceText, requestedValue);
       if (matchedTerm) {
-        points += weight;
+        points += termWeight;
+        contribution += termWeight;
+        matchedCount += 1;
         matched.push(`${label}: ${requestedValue}`);
         explanationFacts.push(`${requestedValue} (${label})`);
       } else if (missingAsGap) {
-        points -= Math.round(weight * 0.8);
         gaps.push(requestedValue);
+        // Preferences remain visible as gaps for recruiter review, but only
+        // explicit Must Have criteria reduce the score.
+        if (label === 'Must Have') points -= Math.round(weight * 0.8);
       }
     }
+    if (requestedValues.length) scoreBreakdown.push({ dimension: label, matched: matchedCount, requested: requestedValues.length, contribution });
   };
 
   scoreGroup('Must Have', criteria.mustHave, [searchable], 18, true);
@@ -157,6 +239,10 @@ function rank(row: SearchRow, criteria: TalentSearchCriteria): TalentSearchMatch
   scoreGroup('地點', criteria.locations, locationValues, 3);
   scoreGroup('語言', criteria.languages, languageValues, 3);
   scoreGroup('學歷', criteria.education, educationValues, 3);
+  // Nice-to-have criteria improve ranking when present but must not create a
+  // large negative penalty. Treating preferences as missing must-haves was
+  // responsible for many unrelated candidates collapsing to the same low
+  // score in broad Job Context searches.
   scoreGroup('Nice to Have', criteria.niceToHave, [searchable], 4, true);
   scoreGroup('關鍵字', criteria.keywords, [searchable], 3);
 
@@ -166,7 +252,7 @@ function rank(row: SearchRow, criteria: TalentSearchCriteria): TalentSearchMatch
   scoreGroup('關鍵字', fallbackTerms, [searchable], 3);
 
   if (criteria.excluded.some((item) => hasTerm(searchable, item))) return null;
-  if (!coreRoleMatched) return null;
+  if (!coreEligible) return null;
   if (possible === 0 || points <= 0) return null;
 
   const evidenceStatus: TalentSearchMatch['evidenceStatus'] = evidence.some((item) => Boolean(item.contentSha256))
@@ -181,6 +267,10 @@ function rank(row: SearchRow, criteria: TalentSearchCriteria): TalentSearchMatch
   ]);
   const rawScore = Math.max(0, Math.min(100, Math.round((Math.max(0, points) / possible) * 100)));
   const relevantTags = unique([...matched.map((item) => item.split(': ').slice(1).join(': ')), ...skillValues]).slice(0, 8);
+  const explicitRoleEvidence = explicitRoleRequests.some((requestedValue) => matchesSearchTerm(coreEvidence, requestedValue));
+  const matchTier: TalentSearchMatch['matchTier'] = row.snapshot_id === null
+    ? 'baseline'
+    : explicitRoleEvidence ? 'direct' : 'adjacent';
 
   return {
     candidateId: row.candidate_id,
@@ -199,12 +289,14 @@ function rank(row: SearchRow, criteria: TalentSearchCriteria): TalentSearchMatch
     profileStatus: row.profile_status || 'completed',
     profileUpdatedAt: iso(row.profile_updated_at),
     evidenceStatus,
-    evidenceWarnings
+    evidenceWarnings,
+    matchTier,
+    scoreBreakdown
   };
 }
 
 export class TalentSearchService implements TalentSearchServiceContract {
-  public constructor(private readonly database: DatabasePool) {}
+  public constructor(private readonly database: DatabasePool, private readonly aiProvider?: AiProvider) {}
 
   public async coverage(): Promise<{ aiReady: number }> {
     const result = await this.database.query<{ ai_ready: string }>(`
@@ -267,12 +359,67 @@ export class TalentSearchService implements TalentSearchServiceContract {
       LIMIT $1
     `, [SEARCH_POOL_LIMIT]);
 
+    const criteria = sanitizeCriteria(request.criteria);
     const ranked = result.rows
-      .map((row) => rank(row, request.criteria))
+      .map((row) => rank(row, criteria))
       .filter((item): item is TalentSearchMatch => Boolean(item))
       .sort((a, b) => b.matchScore - a.matchScore || (b.profileUpdatedAt ?? '').localeCompare(a.profileUpdatedAt ?? ''))
       .slice(0, request.limit);
     return { coverage: await this.coverage(), results: ranked, scoreDefinition: 'recruiting_match_score' };
+  }
+
+  public async searchQuery(query: string, limit: number, mustMatchAll = false): Promise<TalentSearchResponse> {
+    const fallback = (): TalentSearchCriteria => ({
+      intent: 'candidate_search', targetRoles: [], titles: [], skills: [], functions: [],
+      industries: [], companies: [], locations: [], languages: [], education: [], seniority: null,
+      minExperienceYears: null, mustHave: [], niceToHave: [], keywords: queryTokens(query),
+      excluded: [], freeText: query, confidence: 0, mustMatchAll
+    });
+    let criteria = fallback();
+    if (this.aiProvider?.isConfigured()) {
+      try {
+        const generated = await this.aiProvider.generateStructured({
+          prompt: [
+            'You are the Talent Nexus recruiting search query parser.',
+            'Convert the recruiter query into JSON search criteria only. Do not search candidates and do not invent candidate facts.',
+            'Use synonyms and adjacent role families for recall. Set mustMatchAll=true only when the recruiter explicitly says every/all/must.',
+            'Keep uncertain concepts in keywords or niceToHave; keep mustHave for explicit requirements.',
+            `Recruiter query:\n${query}`
+          ].join('\n'),
+          schema: {
+            type: 'object',
+            properties: {
+              intent: { type: 'string', enum: ['candidate_search'] },
+              targetRoles: { type: 'array', items: { type: 'string' } }, titles: { type: 'array', items: { type: 'string' } },
+              skills: { type: 'array', items: { type: 'string' } }, functions: { type: 'array', items: { type: 'string' } },
+              industries: { type: 'array', items: { type: 'string' } }, companies: { type: 'array', items: { type: 'string' } },
+              locations: { type: 'array', items: { type: 'string' } }, languages: { type: 'array', items: { type: 'string' } },
+              education: { type: 'array', items: { type: 'string' } }, seniority: { type: ['string', 'null'] },
+              minExperienceYears: { type: ['number', 'null'] }, mustHave: { type: 'array', items: { type: 'string' } },
+              niceToHave: { type: 'array', items: { type: 'string' } }, keywords: { type: 'array', items: { type: 'string' } },
+              excluded: { type: 'array', items: { type: 'string' } }, confidence: { type: 'number' }, mustMatchAll: { type: 'boolean' }
+            }, required: ['intent', 'targetRoles', 'titles', 'skills', 'functions', 'industries', 'companies', 'locations', 'languages', 'education', 'seniority', 'minExperienceYears', 'mustHave', 'niceToHave', 'keywords', 'excluded', 'confidence', 'mustMatchAll']
+          }
+        });
+        const parsed = talentSearchIntentSchema.safeParse(generated.json);
+        if (parsed.success) {
+          const cleaned = sanitizeCriteria({ ...parsed.data, freeText: query });
+          // A model can occasionally turn numbered JD bullets into terms such
+          // as "1." or return only generic headers. Preserve any meaningful
+          // parsed signals, but supplement weak output with deterministic
+          // query tokens so the search does not silently collapse to noise.
+          criteria = criteriaSignalCount(cleaned) >= 2
+            ? cleaned
+            : sanitizeCriteria({ ...cleaned, keywords: unique([...cleaned.keywords, ...queryTokens(query)]), freeText: query });
+          if (mustMatchAll) criteria.mustMatchAll = true;
+        }
+      } catch {
+        // Query understanding is an enhancement. Deterministic token fallback
+        // keeps search available when Gemini is unavailable or transiently fails.
+      }
+    }
+    const response = await this.search({ criteria, limit });
+    return { ...response, interpretation: criteria };
   }
 }
 
