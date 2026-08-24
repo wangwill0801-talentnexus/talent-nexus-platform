@@ -1,6 +1,7 @@
 import { v7 as uuidv7 } from 'uuid';
 import { loadConfig } from '../config/env.js';
 import { createPool, type DatabasePool } from '../db/pool.js';
+import { hasCompleteRequiredMigrationLedger, requiredMigrationIds } from '../db/required-migrations.js';
 import { PinpinSourceAdapter, type PinpinCandidateSnapshot, type PinpinSourcePreflight } from './source-adapter.js';
 import { PinpinToTalentNexusReconciler, pinpinSourceInstance, pinpinSourceSystem, type ReconcileResult } from './tn-reconciler.js';
 
@@ -60,7 +61,7 @@ async function targetPreflight(pool: DatabasePool, sourceInstanceIdValue: string
     pool.query<CountRow>('SELECT count(*)::text AS count FROM candidate_work_experiences child LEFT JOIN candidates parent ON parent.id = child.candidate_id WHERE parent.id IS NULL'),
     pool.query<CountRow>('SELECT count(*)::text AS count FROM candidate_educations child LEFT JOIN candidates parent ON parent.id = child.candidate_id WHERE parent.id IS NULL'),
     pool.query<CountRow>('SELECT count(*)::text AS count FROM candidate_documents child LEFT JOIN candidates parent ON parent.id = child.candidate_id WHERE parent.id IS NULL'),
-    pool.query<CountRow>('SELECT count(*)::text AS count FROM schema_migrations'),
+    pool.query<CountRow>('SELECT count(*)::text AS count FROM schema_migrations WHERE id = ANY($1::text[])', [requiredMigrationIds]),
   ]);
   return {
     candidateCount: count(candidateCount), referenceCount: count(referenceCount), mappedCount: count(mappedCount),
@@ -73,7 +74,7 @@ function assertPreflight(source: PinpinSourcePreflight, snapshots: PinpinCandida
   if (source.totalCandidates < 7 || source.activeCandidates + source.inactiveCandidates !== source.totalCandidates || snapshots.length !== source.totalCandidates) {
     throw new Error('Source preflight population is inconsistent.');
   }
-  if (target.duplicateRefs || target.multiMappedExternal || target.multiMappedCandidate || target.orphanWork || target.orphanEducation || target.orphanDocuments || target.migrationCount !== 1) {
+  if (target.duplicateRefs || target.multiMappedExternal || target.multiMappedCandidate || target.orphanWork || target.orphanEducation || target.orphanDocuments || !hasCompleteRequiredMigrationLedger(target.migrationCount)) {
     throw new Error('Target preflight integrity is not safe for full import.');
   }
 }

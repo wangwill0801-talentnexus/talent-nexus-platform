@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import type { NativeConnection } from 'msnodesqlv8';
+import { classifyPinpinAttachment, derivePinpinFileRef, type PinpinAttachmentClassification } from './attachment-metadata.js';
 
 export const pinpinSourceTransport = 'shared-memory-lpc';
 
@@ -35,6 +36,8 @@ export type PinpinDocumentMetadata = {
   fileExtension: string | null;
   fileSizeBytes: number | null;
   sourceCreatedAt: string | null;
+  fileRef: string;
+  classification: PinpinAttachmentClassification;
 };
 
 export type PinpinCandidateSnapshot = {
@@ -267,14 +270,20 @@ export function mapSnapshot(candidate: Row, works: Row[], educations: Row[], doc
       endDate: yearMonthToDate(field(row, 'YearE')),
       isCurrent: field(row, 'IsCur') == null ? null : asNumber(field(row, 'IsCur')) === 1,
     })),
-    documents: matching(documents, 'ZPResumeInfo_ID').map((row) => ({
-      externalDocumentId: String(asNumber(field(row, 'ID')) ?? ''),
+    documents: matching(documents, 'ZPResumeInfo_ID').map((row) => {
+      const externalDocumentId = String(asNumber(field(row, 'ID')) ?? '');
+      const originalFilename = text(field(row, 'FileName'));
+      return {
+      externalDocumentId,
       candidateExternalId: String(candidateId),
-      originalFilename: text(field(row, 'FileName')),
+      originalFilename,
       fileExtension: text(field(row, 'FileType')),
       fileSizeBytes: asNumber(field(row, 'Filesize')),
       sourceCreatedAt: toIso(field(row, 'CreDate')),
-    })),
+      fileRef: derivePinpinFileRef(externalDocumentId),
+      classification: classifyPinpinAttachment(originalFilename),
+      };
+    }),
   };
 }
 

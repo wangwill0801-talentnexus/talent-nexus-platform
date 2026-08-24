@@ -83,3 +83,57 @@ test('internal processing controls are authenticated, bounded and never submit A
   assert.deepEqual(calls,['rebuild_projection','retry:0197a1f8-9876-7fef-9f5a-b70a0eed0002']);
   await app.close();
 });
+
+test('talent search and Candidate Intelligence routes keep the TN service token boundary', async () => {
+  const talentSearch = {
+    async coverage() { return { aiReady: 7 }; },
+    async search() { return { coverage: { aiReady: 7 }, results: [], scoreDefinition: 'recruiting_match_score' as const }; },
+    async searchQuery(query: string, limit: number, mustMatchAll?: boolean) { assert.equal(query, 'Bluetooth EE'); assert.equal(limit, 5); assert.equal(mustMatchAll, true); return { coverage: { aiReady: 7 }, results: [], scoreDefinition: 'recruiting_match_score' as const }; }
+  };
+  const candidateIntelligence = {
+    async get(identifier: string) { return identifier === '43222' ? { candidateId: 'controlled', atsCandidateId: '43222' } : null; }
+  };
+  const app = buildApp(config, repository, undefined, { talentSearch, candidateIntelligence });
+  const denied = await app.inject({ method: 'POST', url: '/api/v1/talent-search', payload: { criteria: {} } });
+  assert.equal(denied.statusCode, 401);
+  const headers = { authorization: `Bearer ${config.apiToken}` };
+  const coverage = await app.inject({ method: 'GET', url: '/api/v1/talent-search/coverage', headers });
+  assert.deepEqual(coverage.json(), { data: { aiReady: 7 } });
+  const search = await app.inject({ method: 'POST', url: '/api/v1/talent-search', headers, payload: { criteria: { intent: 'candidate_search', skills: ['Bluetooth'] } } });
+  assert.equal(search.statusCode, 200);
+  const naturalSearch = await app.inject({ method: 'POST', url: '/api/v1/talent-search', headers, payload: { query: 'Bluetooth EE', limit: 5, mustMatchAll: true } });
+  assert.equal(naturalSearch.statusCode, 200);
+  const candidate = await app.inject({ method: 'GET', url: '/api/v1/candidate-intelligence/43222', headers });
+  assert.equal(candidate.statusCode, 200);
+  const invalid = await app.inject({ method: 'GET', url: '/api/v1/candidate-intelligence/not-valid', headers });
+  assert.equal(invalid.statusCode, 400);
+  await app.close();
+});
+
+test('Job Context routes use exact Pinpin Job identity and delegate search without ATS writes', async () => {
+  const jobContext = {
+    async upsert(input: Record<string, unknown>) { return { externalJobId: input.externalJobId, title: input.title, fingerprint: 'a'.repeat(64) }; },
+    async get(id: string) { return id === '106' ? { externalJobId: id, title: 'EE Engineer', fingerprint: 'a'.repeat(64) } : null; },
+    async searchQuery(id: string) { return id === '106' ? 'EE Engineer\nBluetooth' : null; }
+  };
+  const talentSearch = {
+    async searchQuery(query: string, limit: number) { assert.equal(query, 'EE Engineer\nBluetooth'); assert.equal(limit, 10); return { coverage: { aiReady: 7 }, results: [], scoreDefinition: 'recruiting_match_score' as const }; },
+    async coverage() { return { aiReady: 7 }; },
+    async search() { return { coverage: { aiReady: 7 }, results: [], scoreDefinition: 'recruiting_match_score' as const }; }
+  };
+  const app = buildApp(config, repository, undefined, { jobContext, talentSearch });
+  const headers = { authorization: `Bearer ${config.apiToken}` };
+  const invalid = await app.inject({ method: 'POST', url: '/api/v1/jobs/context', headers, payload: { sourceSystem: 'pinpin', sourceInstance: 'pinpin-prod', externalJobId: 'not-a-job' } });
+  assert.equal(invalid.statusCode, 400);
+  const created = await app.inject({ method: 'POST', url: '/api/v1/jobs/context', headers, payload: { sourceSystem: 'pinpin', sourceInstance: 'pinpin-prod', externalJobId: '106', title: 'EE Engineer' } });
+  assert.equal(created.statusCode, 200);
+  const job = await app.inject({ method: 'GET', url: '/api/v1/jobs/106', headers });
+  assert.equal(job.statusCode, 200);
+  const searched = await app.inject({ method: 'POST', url: '/api/v1/jobs/106/search', headers, payload: { limit: 10 } });
+  assert.equal(searched.statusCode, 200);
+  assert.equal(searched.json().data.queryQuality, 'title_or_structured_only');
+  assert.match(searched.json().data.queryWarning, /JD/);
+  const unknown = await app.inject({ method: 'GET', url: '/api/v1/jobs/999', headers });
+  assert.equal(unknown.statusCode, 404);
+  await app.close();
+});

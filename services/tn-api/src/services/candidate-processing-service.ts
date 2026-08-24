@@ -19,23 +19,27 @@ function job(row: JobRow): ProcessingJob { return { id:String(row.id),candidateI
 function safeCode(value: string): string { return /^[A-Z0-9_]{1,64}$/.test(value) ? value : 'PROCESSING_ERROR'; }
 function safeSummary(value?: string): string | null { if (!value) return null; return value.replace(/[\r\n\t]+/g,' ').slice(0,240); }
 
+export async function persistSnapshotProjection(client: DatabaseClient, candidateId: string, snapshotId: string): Promise<void> {
+    await client.query('DELETE FROM candidate_ai_terms WHERE enrichment_snapshot_id=$1',[snapshotId]);
+    await client.query('DELETE FROM candidate_ai_work_experiences WHERE enrichment_snapshot_id=$1',[snapshotId]);
+    await client.query('DELETE FROM candidate_ai_educations WHERE enrichment_snapshot_id=$1',[snapshotId]);
+    await client.query('DELETE FROM candidate_ai_profiles WHERE enrichment_snapshot_id=$1',[snapshotId]);
+    await client.query(`INSERT INTO candidate_ai_profiles (id,candidate_id,enrichment_snapshot_id,professional_summary,recruiter_summary,job_preferences) SELECT $1,$2,s.id,s.payload->>'summary',s.payload->>'recruiterSummary',s.payload->>'jobPreferences' FROM candidate_enrichment_snapshots s WHERE s.id=$3`,[uuidv7(),candidateId,snapshotId]);
+    const payload = await client.query<{ payload: Record<string,unknown> }>('SELECT payload FROM candidate_enrichment_snapshots WHERE id=$1',[snapshotId]);
+    const data=payload.rows[0]?.payload ?? {};
+    for(const [index,item] of (Array.isArray(data.experience)?data.experience:[]).entries()){ const w=item as Record<string,unknown>; await client.query(`INSERT INTO candidate_ai_work_experiences (id,candidate_id,enrichment_snapshot_id,display_order,company_name,job_title,department,location_text,start_date_raw,end_date_raw,is_current,description) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,[uuidv7(),candidateId,snapshotId,index,w.company??null,w.title??null,w.department??null,w.location??null,w.startDate??null,w.endDate??null,w.isCurrent??null,w.description??null]); }
+    for(const [index,item] of (Array.isArray(data.education)?data.education:[]).entries()){ const e=item as Record<string,unknown>; await client.query(`INSERT INTO candidate_ai_educations (id,candidate_id,enrichment_snapshot_id,display_order,school_name,degree_raw,major_raw,start_date_raw,end_date_raw) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[uuidv7(),candidateId,snapshotId,index,e.school??null,e.degree??null,e.major??null,e.startDate??null,e.endDate??null]); }
+    const groups: Array<[string,unknown]>=[['skill',data.skills],['language',[...(Array.isArray(data.languages)?data.languages:[]),...(Array.isArray(data.languageDetails)?data.languageDetails:[])]],['certification',data.certifications],['project',data.projectExperience],['target_role',data.targetRoles],['search_keyword',data.coreKeywords]];
+    for(const [type,values] of groups){ for(const [index,value] of (Array.isArray(values)?values:[]).entries()){ if(typeof value==='string'&&value.trim()) await client.query('INSERT INTO candidate_ai_terms (id,candidate_id,enrichment_snapshot_id,term_type,display_order,value) VALUES ($1,$2,$3,$4,$5,$6)',[uuidv7(),candidateId,snapshotId,type,index,value]); } }
+}
+
 export class ProjectionRebuildExecutor implements ProcessingJobExecutor {
   async execute(current: ProcessingJob, client: DatabaseClient): Promise<ProcessingOutcome> {
     if (current.operation !== 'rebuild_projection') return { status:'needs_review', errorCode:'PROCESSOR_NOT_CONFIGURED', errorSummary:'No approved evidence processor is configured for this operation.' };
     const snapshot = await client.query<{ id:string }>('SELECT id FROM candidate_enrichment_snapshots WHERE candidate_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[current.candidateId]);
     if (!snapshot.rows[0]) return { status:'needs_review', errorCode:'SNAPSHOT_NOT_FOUND' };
     const snapshotId=snapshot.rows[0].id;
-    await client.query('DELETE FROM candidate_ai_terms WHERE enrichment_snapshot_id=$1',[snapshotId]);
-    await client.query('DELETE FROM candidate_ai_work_experiences WHERE enrichment_snapshot_id=$1',[snapshotId]);
-    await client.query('DELETE FROM candidate_ai_educations WHERE enrichment_snapshot_id=$1',[snapshotId]);
-    await client.query('DELETE FROM candidate_ai_profiles WHERE enrichment_snapshot_id=$1',[snapshotId]);
-    await client.query(`INSERT INTO candidate_ai_profiles (id,candidate_id,enrichment_snapshot_id,professional_summary,recruiter_summary,job_preferences) SELECT $1,$2,s.id,s.payload->>'summary',s.payload->>'recruiterSummary',s.payload->>'jobPreferences' FROM candidate_enrichment_snapshots s WHERE s.id=$3`,[uuidv7(),current.candidateId,snapshotId]);
-    const payload = await client.query<{ payload: Record<string,unknown> }>('SELECT payload FROM candidate_enrichment_snapshots WHERE id=$1',[snapshotId]);
-    const data=payload.rows[0]?.payload ?? {};
-    for(const [index,item] of (Array.isArray(data.experience)?data.experience:[]).entries()){ const w=item as Record<string,unknown>; await client.query(`INSERT INTO candidate_ai_work_experiences (id,candidate_id,enrichment_snapshot_id,display_order,company_name,job_title,department,location_text,start_date_raw,end_date_raw,is_current,description) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,[uuidv7(),current.candidateId,snapshotId,index,w.company??null,w.title??null,w.department??null,w.location??null,w.startDate??null,w.endDate??null,w.isCurrent??null,w.description??null]); }
-    for(const [index,item] of (Array.isArray(data.education)?data.education:[]).entries()){ const e=item as Record<string,unknown>; await client.query(`INSERT INTO candidate_ai_educations (id,candidate_id,enrichment_snapshot_id,display_order,school_name,degree_raw,major_raw,start_date_raw,end_date_raw) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[uuidv7(),current.candidateId,snapshotId,index,e.school??null,e.degree??null,e.major??null,e.startDate??null,e.endDate??null]); }
-    const groups: Array<[string,unknown]>=[['skill',data.skills],['language',[...(Array.isArray(data.languages)?data.languages:[]),...(Array.isArray(data.languageDetails)?data.languageDetails:[])]],['certification',data.certifications],['project',data.projectExperience],['target_role',data.targetRoles],['search_keyword',data.coreKeywords]];
-    for(const [type,values] of groups){ for(const [index,value] of (Array.isArray(values)?values:[]).entries()){ if(typeof value==='string'&&value.trim()) await client.query('INSERT INTO candidate_ai_terms (id,candidate_id,enrichment_snapshot_id,term_type,display_order,value) VALUES ($1,$2,$3,$4,$5,$6)',[uuidv7(),current.candidateId,snapshotId,type,index,value]); } }
+    await persistSnapshotProjection(client,current.candidateId,snapshotId);
     return { status:'completed', snapshotId };
   }
 }
@@ -61,11 +65,14 @@ export class CandidateProcessingService {
     if(candidates.rows.length===0) throw new CandidateProcessingError('CANDIDATE_NOT_FOUND');
     if(candidates.rows.length!==1) throw new CandidateProcessingError('IDENTITY_AMBIGUOUS');
     const candidateId=candidates.rows[0]!.id;
-    const source=await this.database.query<Record<string,unknown>>(`SELECT s.id snapshot_id,s.schema_version,s.parser_version,s.ai_provider,s.ai_model,e.id evidence_id,e.evidence_fingerprint,e.extractor_version,e.processing_eligible FROM candidate_enrichment_snapshots s LEFT JOIN candidate_resume_evidence e ON e.enrichment_snapshot_id=s.id WHERE s.candidate_id=$1 ORDER BY s.created_at DESC,s.id DESC LIMIT 2`,[candidateId]);
+    const sourceQuery=operation==='rebuild_projection'
+      ? `SELECT s.id snapshot_id,s.schema_version,s.parser_version,s.ai_provider,s.ai_model,e.id evidence_id,e.evidence_fingerprint,e.extractor_version,e.processing_eligible,x.id extraction_id FROM candidate_enrichment_snapshots s LEFT JOIN candidate_resume_evidence e ON e.enrichment_snapshot_id=s.id LEFT JOIN candidate_evidence_extractions x ON x.evidence_id=e.id AND x.candidate_id=e.candidate_id AND x.status='available' AND x.character_count>0 AND lower(x.content_sha256)=lower(e.content_sha256) AND x.extractor_version=e.extractor_version AND x.representation_kind=e.representation_kind WHERE s.candidate_id=$1 ORDER BY s.created_at DESC,s.id DESC LIMIT 2`
+      : `SELECT s.id snapshot_id,s.schema_version,s.parser_version,s.ai_provider,s.ai_model,e.id evidence_id,e.evidence_fingerprint,e.extractor_version,e.processing_eligible,x.id extraction_id FROM candidate_enrichment_snapshots s JOIN candidate_resume_evidence e ON e.enrichment_snapshot_id=s.id JOIN candidate_evidence_extractions x ON x.evidence_id=e.id AND x.candidate_id=e.candidate_id AND x.status='available' AND x.character_count>0 AND lower(x.content_sha256)=lower(e.content_sha256) AND x.extractor_version=e.extractor_version AND x.representation_kind=e.representation_kind WHERE s.candidate_id=$1 AND e.evidence_fingerprint IS NOT NULL AND e.processing_eligible=true ORDER BY s.created_at DESC,s.id DESC LIMIT 2`;
+    const source=await this.database.query<Record<string,unknown>>(sourceQuery,[candidateId]);
     if(source.rows.length===0) throw new CandidateProcessingError('EVIDENCE_NOT_ELIGIBLE');
     const latest=source.rows[0]!;
-    if(operation!=='rebuild_projection' && (!latest.evidence_id || !latest.evidence_fingerprint || latest.processing_eligible!==true)) throw new CandidateProcessingError('EVIDENCE_NOT_ELIGIBLE');
-    return this.enqueue({candidateId,evidenceId:latest.evidence_id as string|null,operation,evidenceFingerprint:latest.evidence_fingerprint as string|null,extractorVersion:latest.extractor_version as string|null,parserVersion:String(latest.parser_version??'legacy_netlify_parser_unknown'),schemaVersion:String(latest.schema_version),aiProvider:latest.ai_provider as string|null,aiModel:latest.ai_model as string|null,requestedBy});
+    if(operation!=='rebuild_projection' && (!latest.evidence_id || !latest.extraction_id || !latest.evidence_fingerprint || latest.processing_eligible!==true)) throw new CandidateProcessingError('EVIDENCE_NOT_ELIGIBLE');
+    return this.enqueue({candidateId,evidenceId:latest.evidence_id as string|null,extractionId:latest.extraction_id as string|null,operation,evidenceFingerprint:latest.evidence_fingerprint as string|null,extractorVersion:latest.extractor_version as string|null,parserVersion:String(latest.parser_version??'legacy_netlify_parser_unknown'),schemaVersion:String(latest.schema_version),aiProvider:latest.ai_provider as string|null,aiModel:latest.ai_model as string|null,requestedBy});
   }
 
   async runOne(): Promise<ProcessingJob | null> {
@@ -92,11 +99,26 @@ export class CandidateProcessingService {
   async markStale(candidateId:string,reason:string):Promise<void>{ const safe=safeCode(reason); await this.database.query(`UPDATE candidate_processing_state SET status='stale',stale_reason=$2,updated_at=now() WHERE candidate_id=$1`,[candidateId,safe]); }
 
   async retryJob(jobId:string):Promise<ProcessingJob|null>{
-    const result=await this.database.query<JobRow>(`UPDATE candidate_processing_jobs SET status='queued',attempt_count=0,available_at=now(),claimed_at=NULL,claim_token=NULL,finished_at=NULL,last_error_code=NULL,last_error_summary=NULL,updated_at=now() WHERE id=$1 AND status IN ('failed','needs_review','dead_letter') RETURNING ${projection}`,[jobId]);
-    if(!result.rows[0])return null;
-    const current=job(result.rows[0]);
-    await this.database.query(`UPDATE candidate_processing_state SET status='queued',latest_job_id=$2,last_error_code=NULL,updated_at=now() WHERE candidate_id=$1`,[current.candidateId,current.id]);
-    return current;
+    const client=await this.database.connect();
+    try{
+      await client.query('BEGIN');
+      const prior=await client.query<JobRow>(`SELECT ${projection} FROM candidate_processing_jobs WHERE id=$1 AND status IN ('failed','needs_review','dead_letter') FOR UPDATE`,[jobId]);
+      if(!prior.rows[0]){await client.query('ROLLBACK');return null;}
+      const previous=job(prior.rows[0]);
+      let extractionId=previous.extractionId;
+      // Recover jobs created by the pre-fix enqueue path. They may have a
+      // valid evidence row but no extraction_id; resolve only the exact
+      // matching available extraction and fail closed on ambiguity.
+      if(previous.operation==='process_new_evidence'&&!extractionId&&previous.evidenceId&&previous.evidenceFingerprint){
+        const matches=await client.query<{id:string}>(`SELECT x.id FROM candidate_evidence_extractions x WHERE x.evidence_id=$1 AND x.candidate_id=$2 AND x.status='available' AND x.character_count>0 AND lower(x.content_sha256)=lower($3) LIMIT 2`,[previous.evidenceId,previous.candidateId,previous.evidenceFingerprint]);
+        if(matches.rows.length===1) extractionId=matches.rows[0]!.id;
+      }
+      const result=await client.query<JobRow>(`UPDATE candidate_processing_jobs SET status='queued',extraction_id=COALESCE($2,extraction_id),attempt_count=0,available_at=now(),claimed_at=NULL,claim_token=NULL,finished_at=NULL,last_error_code=NULL,last_error_summary=NULL,updated_at=now() WHERE id=$1 RETURNING ${projection}`,[jobId,extractionId]);
+      const current=job(result.rows[0]!);
+      await client.query(`UPDATE candidate_processing_state SET status='queued',latest_job_id=$2,last_error_code=NULL,updated_at=now() WHERE candidate_id=$1`,[current.candidateId,current.id]);
+      await client.query('COMMIT');
+      return current;
+    }catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}finally{client.release();}
   }
 
   async recoverStaleClaims(olderThanMinutes=15):Promise<number>{

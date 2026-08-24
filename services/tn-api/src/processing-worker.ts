@@ -1,8 +1,16 @@
 import { loadConfig } from './config/env.js';
 import { createPool } from './db/pool.js';
 import { CandidateProcessingService } from './services/candidate-processing-service.js';
+import { createAiProvider, loadAiConfig } from './ai/index.js';
+import { EvidenceAiProcessingExecutor } from './services/evidence-ai-processing-executor.js';
 
-const config=loadConfig(),pool=createPool(config.databaseUrl),service=new CandidateProcessingService(pool);
+if (process.env.TN_ENV === 'production') {
+  try { process.loadEnvFile('E:\\TalentNexus\\config\\tn-ai.env'); } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+  }
+}
+
+const config=loadConfig(),aiConfig=loadAiConfig(),pool=createPool(config.databaseUrl),service=new CandidateProcessingService(pool,new EvidenceAiProcessingExecutor(createAiProvider(aiConfig),aiConfig.queryModel));
 let stopping=false;
 process.once('SIGINT',()=>{stopping=true;});
 process.once('SIGTERM',()=>{stopping=true;});

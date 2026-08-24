@@ -47,6 +47,27 @@ test('same processing identity enqueues once and projection rebuild is snapshot-
   await pool.end();
 });
 
+test('process_new_evidence resolves the matching available extraction before enqueue',async()=>{
+  const pool=await database(),candidateId=await seed(pool);
+  const evidence=(await pool.query<{id:string}>('SELECT id FROM candidate_resume_evidence WHERE candidate_id=$1',[candidateId])).rows[0]!.id;
+  await pool.query("UPDATE candidate_resume_evidence SET processing_eligible=true,representation_kind='connector_text' WHERE id=$1",[evidence]);
+  await pool.query("INSERT INTO candidate_evidence_extractions (id,evidence_id,candidate_id,extractor_version,content_sha256,representation_kind,character_count,status,normalization_version) VALUES ($1,$2,$3,'parser-v1',$4,'connector_text',42,'available','tn-text-nfkc-v1')",[uuidv7(),evidence,candidateId,'a'.repeat(64)]);
+  const queued=await new CandidateProcessingService(pool).enqueueByIdentifier('43999','process_new_evidence');
+  assert.equal(queued.status,'created');assert.equal(queued.job.operation,'process_new_evidence');assert.ok(queued.job.extractionId);
+  await pool.end();
+});
+
+test('process_new_evidence skips a newer snapshot without usable evidence',async()=>{
+  const pool=await database(),candidateId=await seed(pool);
+  const evidence=(await pool.query<{id:string}>('SELECT id FROM candidate_resume_evidence WHERE candidate_id=$1',[candidateId])).rows[0]!.id;
+  await pool.query("UPDATE candidate_resume_evidence SET processing_eligible=true,representation_kind='connector_text' WHERE id=$1",[evidence]);
+  await pool.query("INSERT INTO candidate_evidence_extractions (id,evidence_id,candidate_id,extractor_version,content_sha256,representation_kind,character_count,status,normalization_version) VALUES ($1,$2,$3,'parser-v1',$4,'connector_text',42,'available','tn-text-nfkc-v1')",[uuidv7(),evidence,candidateId,'a'.repeat(64)]);
+  await pool.query("INSERT INTO candidate_enrichment_snapshots (id,candidate_id,schema_version,source_kind,payload,payload_fingerprint,idempotency_key,created_at) VALUES ($1,$2,'standard_resume_v1','manual','{}',$3,$4,now()+interval '1 second')",[uuidv7(),candidateId,'b'.repeat(64),'c'.repeat(64)]);
+  const queued=await new CandidateProcessingService(pool).enqueueByIdentifier('43999','process_new_evidence');
+  assert.ok(queued.job.extractionId);assert.equal(queued.job.evidenceId,evidence);
+  await pool.end();
+});
+
 test('bounded retry becomes dead letter and records only safe error metadata',async()=>{
   const pool=await database(),candidateId=await seed(pool);
   await pool.query("UPDATE candidate_resume_evidence SET processing_eligible=true,representation_kind='connector_text' WHERE candidate_id=$1",[candidateId]);
@@ -58,6 +79,20 @@ test('bounded retry becomes dead letter and records only safe error metadata',as
   const state=await pool.query<{status:string;last_error_code:string}>('SELECT status,last_error_code FROM candidate_processing_state WHERE candidate_id=$1',[candidateId]);
   assert.equal(state.rows[0]?.status,'dead_letter');assert.equal(state.rows[0]?.last_error_code,'PROVIDER_TEMPORARY');
   const retried=await service.retryJob(result!.id);assert.equal(retried?.status,'queued');assert.equal(retried?.attemptCount,0);assert.equal(retried?.lastErrorCode,null);
+  await pool.end();
+});
+
+test('retry repairs a legacy process_new_evidence job missing extraction identity',async()=>{
+  const pool=await database(),candidateId=await seed(pool);
+  const evidence=(await pool.query<{id:string}>('SELECT id FROM candidate_resume_evidence WHERE candidate_id=$1',[candidateId])).rows[0]!.id;
+  await pool.query("UPDATE candidate_resume_evidence SET processing_eligible=true,representation_kind='connector_text' WHERE id=$1",[evidence]);
+  await pool.query("INSERT INTO candidate_evidence_extractions (id,evidence_id,candidate_id,extractor_version,content_sha256,representation_kind,character_count,status,normalization_version) VALUES ($1,$2,$3,'parser-v1',$4,'connector_text',42,'available','tn-text-nfkc-v1')",[uuidv7(),evidence,candidateId,'a'.repeat(64)]);
+  const executor:ProcessingJobExecutor={execute:async(current:ProcessingJob)=>current.extractionId?{status:'completed'}:{status:'needs_review',errorCode:'EVIDENCE_NOT_ELIGIBLE'}};
+  const service=new CandidateProcessingService(pool,executor);
+  const queued=await service.enqueue({candidateId,evidenceId:evidence,operation:'process_new_evidence',evidenceFingerprint:'a'.repeat(64),extractorVersion:'parser-v1',parserVersion:'parser-v1',schemaVersion:'standard_resume_v1',aiProvider:'gemini',maxAttempts:1});
+  const failed=await service.runOne();assert.equal(failed?.status,'needs_review');assert.equal(failed?.extractionId,null);
+  const retried=await service.retryJob(queued.job.id);assert.equal(retried?.status,'queued');assert.ok(retried?.extractionId);
+  const processed=await service.runOne();assert.equal(processed?.status,'completed');
   await pool.end();
 });
 

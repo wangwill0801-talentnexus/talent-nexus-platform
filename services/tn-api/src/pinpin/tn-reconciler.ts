@@ -277,6 +277,13 @@ async function reconcileWork(db: QueryExecutor, candidateId: string, sourceInsta
   let updated = 0;
   let deleted = 0;
   const retained = new Set<string>();
+  // Match only against the rows that existed before this reconciliation. Rows
+  // inserted earlier in this same pass must not become identity candidates for
+  // later source rows, especially when the source expands from 1 to many.
+  const originalRows = (await db.query<{ id: string; company_name: unknown; job_title: unknown; industry_raw: unknown; start_date: unknown; end_date: unknown; is_current: unknown }>(`
+    SELECT id, company_name, job_title, industry_raw, start_date, end_date, is_current
+    FROM candidate_work_experiences WHERE candidate_id = $1 AND source_instance_id = $2
+  `, [candidateId, sourceInstanceId])).rows;
   for (const [displayOrder, work] of snapshot.workExperiences.entries()) {
     const fingerprint = sourceFingerprint([work.companyName, work.jobTitle, work.department, work.industryRaw, work.startDate, work.endDate, work.isCurrent]);
     const byRecord = await db.query<{ id: string }>(`
@@ -289,17 +296,14 @@ async function reconcileWork(db: QueryExecutor, candidateId: string, sourceInsta
       WHERE candidate_id = $1 AND source_instance_id = $2 AND source_fingerprint = $3
       LIMIT 1
     `, [candidateId, sourceInstanceId, fingerprint]);
-    const logicalRows = existing.rows[0] ? [] : (await db.query<{ id: string; company_name: unknown; job_title: unknown; industry_raw: unknown; start_date: unknown; end_date: unknown; is_current: unknown }>(`
-      SELECT id, company_name, job_title, industry_raw, start_date, end_date, is_current
-      FROM candidate_work_experiences WHERE candidate_id = $1 AND source_instance_id = $2
-    `, [candidateId, sourceInstanceId])).rows;
+    const logicalRows = existing.rows[0] ? [] : originalRows.filter((row) => !retained.has(row.id));
     const uniqueLogicalMatches = existing.rows[0] ? existing.rows : logicalRows.filter((row) =>
       sameNullableValue(row.company_name, work.companyName)
       && sameNullableDate(row.start_date, work.startDate)
       && sameNullableDate(row.end_date, work.endDate)
       && sameNullableValue(row.is_current, work.isCurrent)
     );
-    const fuzzy = !existing.rows[0] && uniqueLogicalMatches.length !== 1 && snapshot.workExperiences.length === logicalRows.length
+    const fuzzy = !existing.rows[0] && uniqueLogicalMatches.length !== 1 && snapshot.workExperiences.length === originalRows.length
       ? uniqueHighestMatch(logicalRows, (row) => workLogicalScore(row, work), 7) : null;
     const matched = uniqueLogicalMatches.length === 1 ? uniqueLogicalMatches[0] : fuzzy ?? existing.rows[0];
     if (matched && !retained.has(matched.id)) {
@@ -345,6 +349,10 @@ async function reconcileEducation(db: QueryExecutor, candidateId: string, source
   let updated = 0;
   let deleted = 0;
   const retained = new Set<string>();
+  const originalRows = (await db.query<{ id: string; school_name: unknown; degree_raw: unknown; major_raw: unknown; start_date: unknown; end_date: unknown; is_current: unknown }>(`
+    SELECT id, school_name, degree_raw, major_raw, start_date, end_date, is_current
+    FROM candidate_educations WHERE candidate_id = $1 AND source_instance_id = $2
+  `, [candidateId, sourceInstanceId])).rows;
   for (const [displayOrder, education] of snapshot.educations.entries()) {
     const fingerprint = sourceFingerprint([education.schoolName, education.degreeRaw, education.majorRaw, education.descriptionRaw, education.startDate, education.endDate, education.isCurrent]);
     const byRecord = await db.query<{ id: string }>(`
@@ -357,10 +365,7 @@ async function reconcileEducation(db: QueryExecutor, candidateId: string, source
       WHERE candidate_id = $1 AND source_instance_id = $2 AND source_fingerprint = $3
       LIMIT 1
     `, [candidateId, sourceInstanceId, fingerprint]);
-    const logicalRows = existing.rows[0] ? [] : (await db.query<{ id: string; school_name: unknown; degree_raw: unknown; major_raw: unknown; start_date: unknown; end_date: unknown; is_current: unknown }>(`
-      SELECT id, school_name, degree_raw, major_raw, start_date, end_date, is_current
-      FROM candidate_educations WHERE candidate_id = $1 AND source_instance_id = $2
-    `, [candidateId, sourceInstanceId])).rows;
+    const logicalRows = existing.rows[0] ? [] : originalRows.filter((row) => !retained.has(row.id));
     const uniqueLogicalMatches = existing.rows[0] ? existing.rows : logicalRows.filter((row) =>
       sameNullableValue(row.school_name, education.schoolName)
       && sameNullableValue(row.degree_raw, education.degreeRaw)
@@ -369,7 +374,7 @@ async function reconcileEducation(db: QueryExecutor, candidateId: string, source
       && sameNullableDate(row.end_date, education.endDate)
       && sameNullableValue(row.is_current, education.isCurrent)
     );
-    const fuzzy = !existing.rows[0] && uniqueLogicalMatches.length !== 1 && snapshot.educations.length === logicalRows.length
+    const fuzzy = !existing.rows[0] && uniqueLogicalMatches.length !== 1 && snapshot.educations.length === originalRows.length
       ? uniqueHighestMatch(logicalRows, (row) => educationLogicalScore(row, education), 7) : null;
     const matched = uniqueLogicalMatches.length === 1 ? uniqueLogicalMatches[0] : fuzzy ?? existing.rows[0];
     const rawFields = JSON.stringify({ descriptionRaw: education.descriptionRaw });

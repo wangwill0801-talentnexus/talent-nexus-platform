@@ -18,6 +18,12 @@ export type EnrichmentSnapshot = {
 export type StoreCandidateEnrichmentInput = {
   candidateId: string; source: EnrichmentSource; pluginVersion?: string | null; parserVersion?: string | null;
   atsSavedAt?: string | null; aiMetadata?: EnrichmentAiMetadata; correlationId?: string | null; payload: unknown;
+  existingEvidenceId?: string | null;
+  evidenceContent?: {
+    normalizedText: string; contentSha256: string; evidenceIdentityKey: string;
+    representationKind: 'connector_text' | 'connector_html' | 'local_file_text';
+    extractorVersion: string; normalizationVersion: string; captureMethod: string; connectorVersion?: string | null;
+  } | null;
 };
 export type StoreCandidateEnrichmentResult = { status: 'created' | 'unchanged'; snapshot: EnrichmentSnapshot };
 
@@ -79,12 +85,23 @@ async function persistNormalizedProfile(client: DatabaseClient, candidateId: str
 }
 
 async function persistEvidenceAndProcessing(client: DatabaseClient, input: StoreCandidateEnrichmentInput, source: ReturnType<typeof normalizedSource>, pluginVersion: string | null, parserVersion: string | null, payload: StandardResumeV1, snapshotId: string): Promise<void> {
-  const evidenceId = uuidv7();
-  await client.query(`INSERT INTO candidate_resume_evidence (id,candidate_id,enrichment_snapshot_id,source_type,source_system,source_reference,source_url,attachment_name,attachment_type,attachment_reference,content_sha256,evidence_fingerprint,extractor_version,representation_kind,processing_eligible,captured_at,source_created_at,source_updated_at) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$12,'metadata_only',false,$13::timestamptz,$14::timestamptz,$15::timestamptz WHERE NOT EXISTS (SELECT 1 FROM candidate_resume_evidence WHERE enrichment_snapshot_id=$3)`,
-    [evidenceId, input.candidateId, snapshotId, source.kind, source.system, source.reference, source.url, source.attachmentName, source.attachmentType, source.attachmentReference, source.contentSha256, parserVersion, source.capturedAt, source.createdAt, source.updatedAt]);
+  const content = input.evidenceContent ?? null;
+  const evidenceId = input.existingEvidenceId ?? uuidv7();
+  if (input.existingEvidenceId) {
+    const updated = await client.query<{ id: string }>(`UPDATE candidate_resume_evidence SET enrichment_snapshot_id=$3,source_type=$4,source_system=$5,source_reference=$6,source_url=$7,attachment_name=$8,attachment_type=$9,attachment_reference=$10,content_sha256=$11,evidence_fingerprint=$11,extractor_version=$12,representation_kind=$13,processing_eligible=$14,captured_at=$15::timestamptz,evidence_identity_key=$16,hash_algorithm=$17,normalization_version=$18,capture_method=$19,connector_version=$20 WHERE id=$1 AND candidate_id=$2 AND (enrichment_snapshot_id IS NULL OR enrichment_snapshot_id=$3) RETURNING id`,
+      [evidenceId, input.candidateId, snapshotId, source.kind, source.system, source.reference, source.url, source.attachmentName, source.attachmentType, source.attachmentReference, source.contentSha256, content?.extractorVersion ?? parserVersion, content?.representationKind ?? 'metadata_only', Boolean(content), source.capturedAt, content?.evidenceIdentityKey ?? null, content ? 'sha256' : null, content?.normalizationVersion ?? null, content?.captureMethod ?? null, content?.connectorVersion ?? pluginVersion]);
+    if (!updated.rows[0]) throw new CandidateEnrichmentError('INVALID_ENRICHMENT');
+  } else {
+    await client.query(`INSERT INTO candidate_resume_evidence (id,candidate_id,enrichment_snapshot_id,source_type,source_system,source_reference,source_url,attachment_name,attachment_type,attachment_reference,content_sha256,evidence_fingerprint,extractor_version,representation_kind,processing_eligible,captured_at,source_created_at,source_updated_at,evidence_identity_key,hash_algorithm,normalization_version,capture_method,connector_version) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$12,$13,$14,$15::timestamptz,$16::timestamptz,$17::timestamptz,$18,$19,$20,$21,$22 WHERE NOT EXISTS (SELECT 1 FROM candidate_resume_evidence WHERE enrichment_snapshot_id=$3)`,
+      [evidenceId, input.candidateId, snapshotId, source.kind, source.system, source.reference, source.url, source.attachmentName, source.attachmentType, source.attachmentReference, source.contentSha256, content?.extractorVersion ?? parserVersion, content?.representationKind ?? 'metadata_only', Boolean(content), source.capturedAt, source.createdAt, source.updatedAt, content?.evidenceIdentityKey ?? null, content ? 'sha256' : null, content?.normalizationVersion ?? null, content?.captureMethod ?? null, content?.connectorVersion ?? pluginVersion]);
+  }
   const evidence = await client.query<{id:string}>('SELECT id FROM candidate_resume_evidence WHERE enrichment_snapshot_id=$1',[snapshotId]);
+  if (content && evidence.rows[0]) {
+    await client.query(`INSERT INTO candidate_evidence_extractions (id,evidence_id,candidate_id,extractor_version,content_sha256,representation_kind,content_reference,character_count,status,normalization_version,normalized_text) VALUES ($1,$2,$3,$4,$5,$6,'inline:normalized_text',$7,'available',$8,$9) ON CONFLICT (evidence_id,extractor_version,content_sha256) DO NOTHING`,
+      [uuidv7(), evidence.rows[0].id, input.candidateId, content.extractorVersion, content.contentSha256, content.representationKind, content.normalizedText.length, content.normalizationVersion, content.normalizedText]);
+  }
   await client.query(`INSERT INTO candidate_processing_jobs (id,candidate_id,evidence_id,operation,status,attempt_count,max_attempts,available_at,started_at,finished_at,evidence_fingerprint,extractor_version,parser_version,schema_version,ai_provider,ai_model,idempotency_key,requested_by,output_snapshot_id,created_at,updated_at) VALUES ($1,$2,$3,'process_new_evidence','completed',1,1,now(),now(),now(),$4,$5,$6,$7,$8,$9,$10,'connector_legacy_intake',$1,now(),now()) ON CONFLICT (candidate_id,idempotency_key) DO NOTHING`,
-    [snapshotId,input.candidateId,evidence.rows[0]?.id??null,source.contentSha256,parserVersion,parserVersion??'legacy_netlify_parser_unknown',payload.schemaVersion,input.aiMetadata?.provider??null,input.aiMetadata?.model??null,`legacy-snapshot:${snapshotId}`]);
+    [snapshotId,input.candidateId,evidence.rows[0]?.id??null,source.contentSha256,content?.extractorVersion ?? parserVersion,parserVersion??'legacy_netlify_parser_unknown',payload.schemaVersion,input.aiMetadata?.provider??null,input.aiMetadata?.model??null,`legacy-snapshot:${snapshotId}`]);
   await client.query(`INSERT INTO candidate_processing_state (candidate_id,status,latest_snapshot_id,latest_job_id,schema_version,parser_version,plugin_version,processor_version,source_created_at,source_updated_at,resume_updated_at,last_synced_at,ai_first_processed_at,ai_last_processed_at,profile_created_at,last_error_code,updated_at) VALUES ($1,'completed',$2,$2,$3,$4,$5,$4,$6,$7,$8,now(),now(),now(),now(),NULL,now()) ON CONFLICT (candidate_id) DO UPDATE SET status='completed',latest_snapshot_id=EXCLUDED.latest_snapshot_id,latest_job_id=EXCLUDED.latest_job_id,schema_version=EXCLUDED.schema_version,parser_version=COALESCE(EXCLUDED.parser_version,candidate_processing_state.parser_version),plugin_version=COALESCE(EXCLUDED.plugin_version,candidate_processing_state.plugin_version),processor_version=COALESCE(EXCLUDED.processor_version,candidate_processing_state.processor_version),source_created_at=COALESCE(EXCLUDED.source_created_at,candidate_processing_state.source_created_at),source_updated_at=COALESCE(EXCLUDED.source_updated_at,candidate_processing_state.source_updated_at),resume_updated_at=COALESCE(EXCLUDED.resume_updated_at,candidate_processing_state.resume_updated_at),last_synced_at=now(),ai_first_processed_at=COALESCE(candidate_processing_state.ai_first_processed_at,now()),ai_last_processed_at=now(),profile_created_at=COALESCE(candidate_processing_state.profile_created_at,now()),last_error_code=NULL,stale_reason=NULL,updated_at=now()`,
     [input.candidateId, snapshotId, payload.schemaVersion, parserVersion, pluginVersion, source.createdAt, source.updatedAt, source.updatedAt ?? source.capturedAt]);
 }
@@ -107,7 +124,18 @@ export class CandidateEnrichmentService {
     // projection tables existed. Parser and attachment metadata are still stored
     // on the snapshot/evidence rows, but must not turn an unchanged legacy replay
     // into a second semantic snapshot.
-    const idempotencyKey = fingerprint({ schemaVersion: payload.schemaVersion, payloadFingerprint, source: { kind: source.kind, system: source.system, reference: source.reference, url: source.url }, pluginVersion, aiMetadata });
+    const semanticIdentity = {
+      schemaVersion: payload.schemaVersion,
+      payloadFingerprint,
+      source: { kind: source.kind, system: source.system, reference: source.reference, url: source.url },
+      pluginVersion,
+      aiMetadata
+    };
+    // Preserve the exact historical key for legacy metadata-only replays.
+    // Content-backed captures add their immutable normalized representation.
+    const idempotencyKey = fingerprint(input.evidenceContent
+      ? { ...semanticIdentity, evidenceContentSha256: input.evidenceContent.contentSha256 }
+      : semanticIdentity);
     const client = await this.database.connect();
     try {
       await client.query('BEGIN');

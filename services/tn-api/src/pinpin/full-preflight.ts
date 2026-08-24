@@ -1,5 +1,6 @@
 import { loadConfig } from '../config/env.js';
 import { createPool, type DatabasePool } from '../db/pool.js';
+import { hasCompleteRequiredMigrationLedger, requiredMigrationIds } from '../db/required-migrations.js';
 import { PinpinSourceAdapter } from './source-adapter.js';
 import { pinpinSourceInstance, pinpinSourceSystem } from './tn-reconciler.js';
 
@@ -35,10 +36,10 @@ async function main(): Promise<void> {
       pool.query<CountRow>('SELECT count(*)::text AS count FROM candidate_work_experiences child LEFT JOIN candidates parent ON parent.id = child.candidate_id WHERE parent.id IS NULL'),
       pool.query<CountRow>('SELECT count(*)::text AS count FROM candidate_educations child LEFT JOIN candidates parent ON parent.id = child.candidate_id WHERE parent.id IS NULL'),
       pool.query<CountRow>('SELECT count(*)::text AS count FROM candidate_documents child LEFT JOIN candidates parent ON parent.id = child.candidate_id WHERE parent.id IS NULL'),
-      pool.query<CountRow>('SELECT count(*)::text AS count FROM schema_migrations'),
+      pool.query<CountRow>('SELECT count(*)::text AS count FROM schema_migrations WHERE id = ANY($1::text[])', [requiredMigrationIds]),
     ]);
     const target = { tnCandidates: count(tnCandidates), existingPinpinMappings: count(pinpinRefs), duplicateRefs: count(duplicateRefs), externalMultiMap: count(externalMultiMap), candidateMultiMap: count(candidateMultiMap), orphanWork: count(orphanWork), orphanEducation: count(orphanEducation), orphanDocuments: count(orphanDocuments), migrations: count(migrations) };
-    const pass = source.totalCandidates >= 7 && source.activeCandidates + source.inactiveCandidates === source.totalCandidates && target.duplicateRefs === 0 && target.externalMultiMap === 0 && target.candidateMultiMap === 0 && target.orphanWork === 0 && target.orphanEducation === 0 && target.orphanDocuments === 0 && target.migrations === 1;
+    const pass = source.totalCandidates >= 7 && source.activeCandidates + source.inactiveCandidates === source.totalCandidates && target.duplicateRefs === 0 && target.externalMultiMap === 0 && target.candidateMultiMap === 0 && target.orphanWork === 0 && target.orphanEducation === 0 && target.orphanDocuments === 0 && hasCompleteRequiredMigrationLedger(target.migrations);
     process.stdout.write(`${JSON.stringify({ source, target, expectedNewMappings: source.totalCandidates - target.existingPinpinMappings, pass })}\n`);
     if (!pass) process.exitCode = 2;
   } catch (error) {

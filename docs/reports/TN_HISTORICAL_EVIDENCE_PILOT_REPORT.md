@@ -133,3 +133,13 @@ Do not start a 20-50 backfill. First select 5-10 candidates for which the Connec
 5. extractor/parser/schema/provider/model versions.
 
 Repeat the pilot, require a second-run no-op, and perform human source-to-profile review. Only then prepare a separate 20-50 batch approval and the Talent Search/Candidate 360 foundation.
+
+## 2026-08-13 Historical Evidence Bridge production update
+
+The content-backed backend bridge is now deployed with additive migration `005_historical_evidence_bridge.sql`. It adds nullable pre-snapshot evidence, deterministic evidence identity, SHA-256/normalization/capture provenance and controlled normalized extraction text. The API accepts exact scoped Pinpin identity only, canonicalizes 104/LinkedIn URLs, rejects hash mismatch and never returns evidence text. Existing valid Standard Resume results are reused with zero additional Gemini calls; raw evidence uses the existing bounded worker and server-side Gemini provider.
+
+Production release SHA-256: `8682AC06F172F661AEA21024786E44EEBF9FD7BAD3A2A5FA14A892C54F319C4C`. A native PostgreSQL custom-format backup was created and validated before migration. Migration 005 is present exactly once; API and worker tasks are running; local/public TN health and both ATS webapps return 200. Duplicate scoped refs and profile/work/education/evidence/extraction/job orphans are all zero. PostgreSQL and TN API remain localhost-only; Pinpin writes and BLOB reads are zero.
+
+Automated tests are now 69/69 and TypeScript build passes. The latest read-only production dry-run observed 196 candidates: 4 already current, 12 no evidence, 172 no snapshot and 8 inactive; eligible content-backed historical evidence remains zero.
+
+Gate B did not begin. Production has four projected profiles, but their legacy evidence remains metadata-only without the controlled normalized representation and SHA-256 required for factual source review. Creating the required 5-10 real evidence-first cohort needs a current Connector no-save capture trigger. The Connector source is a separate nested repository with substantial pre-existing uncommitted work; modifying/releasing it here would violate the master build's unrelated-work preservation stop condition. No identity was guessed and no legacy evidence was promoted.

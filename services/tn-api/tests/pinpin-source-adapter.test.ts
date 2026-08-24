@@ -29,7 +29,9 @@ test('Pinpin source mapping retains only approved metadata and lifecycle fields'
   assert.equal(snapshot.educations[0]?.startDate, '2020-09-01');
   assert.equal(snapshot.educations[0]?.endDate, '2024-06-01');
   assert.equal(snapshot.documents[0]?.externalDocumentId, '984');
-  assert.deepEqual(Object.keys(snapshot.documents[0] || {}).sort(), ['candidateExternalId', 'externalDocumentId', 'fileExtension', 'fileSizeBytes', 'originalFilename', 'sourceCreatedAt']);
+  assert.equal(snapshot.documents[0]?.fileRef, 'CV984');
+  assert.equal(snapshot.documents[0]?.classification.documentType, 'resume');
+  assert.deepEqual(Object.keys(snapshot.documents[0] || {}).sort(), ['candidateExternalId', 'classification', 'externalDocumentId', 'fileExtension', 'fileRef', 'fileSizeBytes', 'originalFilename', 'sourceCreatedAt']);
   assert.ok(snapshot.deletedAt);
 });
 
