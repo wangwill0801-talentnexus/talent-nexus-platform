@@ -16,6 +16,8 @@ import type { CandidateIntelligenceServiceContract } from './services/candidate-
 import type { PinpinEvidenceRequestService } from './services/pinpin-evidence-request-service.js';
 import { PinpinBlobEvidenceError, type PinpinBlobEvidenceService } from './services/pinpin-blob-evidence-service.js';
 import type { JobContextInput, JobContextService } from './services/job-context-service.js';
+import { runSearchKeywords, searchKeywordsRequestV1Schema } from './domain/search-keywords.js';
+import type { AiProvider } from './ai/types.js';
 
 function authenticated(request: { headers: { authorization?: string } }, config: AppConfig): boolean {
   return request.headers.authorization === `Bearer ${config.apiToken}`;
@@ -32,6 +34,7 @@ export type AppDependencies = {
   talentSearch?: TalentSearchServiceContract;
   candidateIntelligence?: CandidateIntelligenceServiceContract;
   jobContext?: JobContextService;
+  aiProvider?: AiProvider;
 };
 
 export function buildApp(config: AppConfig, repository: CandidateRepository, sidecar?: PluginSidecarIntake, dependencies: AppDependencies = {}): FastifyInstance {
@@ -347,6 +350,31 @@ export function buildApp(config: AppConfig, repository: CandidateRepository, sid
         return reply.status(status).send({ error: { code: error.code, message: 'Pinpin BLOB evidence could not be safely accepted.' } });
       }
       throw error;
+    }
+  });
+
+  // Read-only 104 keyword helper. The Connector sends only the recruiter-entered
+  // JD; the model returns paste-ready alternatives and nothing is persisted.
+  app.post('/api/v1/plugin-sidecar/search-keywords', async (request, reply) => {
+    if (!entraVerifier) return reply.status(503).send({ error: { code: 'ENTRA_AUTH_UNAVAILABLE', message: 'Entra authentication is unavailable.' } });
+    try {
+      await entraVerifier.verify(request.headers.authorization);
+    } catch (error) {
+      if (error instanceof EntraAccessTokenError) {
+        const message = error.statusCode === 403 ? 'Required delegated scope is missing.' : 'Valid Entra authentication is required.';
+        return reply.status(error.statusCode).send({ error: { code: error.code, message } });
+      }
+      return reply.status(401).send({ error: { code: 'ENTRA_AUTH_INVALID', message: 'Valid Entra authentication is required.' } });
+    }
+    const parsed = searchKeywordsRequestV1Schema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: { code: 'SEARCH_KEYWORDS_INVALID_PAYLOAD', message: 'Invalid search keyword payload.' } });
+    if (!dependencies.aiProvider || !dependencies.aiProvider.isConfigured()) return reply.status(503).send({ error: { code: 'AI_UNAVAILABLE', message: 'AI keyword generation is unavailable.' } });
+    try {
+      const result = await runSearchKeywords(dependencies.aiProvider, parsed.data);
+      return reply.send({ data: { contractVersion: 'search_keywords_v1', source: parsed.data.source, ...result } });
+    } catch (error) {
+      request.log.warn({ requestId: request.id, route: request.routeOptions.url, errorCode: error instanceof Error ? error.message : 'SEARCH_KEYWORDS_FAILED' }, 'search keywords unavailable');
+      return reply.status(503).send({ error: { code: 'SEARCH_KEYWORDS_UNAVAILABLE', message: 'Search keyword generation is currently unavailable.' } });
     }
   });
 

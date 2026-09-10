@@ -54,7 +54,8 @@ const app = buildApp(config, new PostgresCandidateRepository(pool), internalSide
   pinpinBlobEvidence,
   talentSearch: new TalentSearchService(pool, aiProvider),
   candidateIntelligence: new CandidateIntelligenceService(dataBrowser)
-  ,jobContext
+  ,jobContext,
+  aiProvider
 });
 
 async function shutdown(signal: string): Promise<void> {
